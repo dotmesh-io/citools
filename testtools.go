@@ -201,7 +201,7 @@ func testSetup(f Federation, stamp int64) error {
 					continue
 				}
 				if !strings.Contains(image, "/") {
-					image = localImage(image)
+					image = LocalImage(image)
 				}
 				err := system("bash", "-c", fmt.Sprintf(`
 					set -xe
@@ -476,7 +476,7 @@ func helperImage(service string) string {
 	return fmt.Sprintf("%s/%s:%s", registry, service, tag)
 }
 
-func localImage(service string) string {
+func LocalImage(service string) string {
 	var registry string
 	// expected format: quay.io/dotmesh for example
 	if reg := os.Getenv("CI_DOCKER_REGISTRY"); reg != "" {
@@ -490,10 +490,13 @@ func localImage(service string) string {
 	}
 
 	tag := os.Getenv("CI_DOCKER_TAG")
+	serviceBeingTested := os.Getenv("CI_SERVICE_BEING_TESTED")
 	if tag == "" {
 		tag = "latest"
 	}
-
+	if serviceBeingTested != service {
+		tag = "master"
+	}
 	return fmt.Sprintf("%s/%s:%s", registry, service, tag)
 }
 
@@ -515,7 +518,7 @@ func localImageArgs() string {
 		traceSuffix = fmt.Sprintf(" --trace %s", HOST_IP_FROM_CONTAINER)
 	}
 	regSuffix := ""
-	return ("--image " + localImage("dotmesh-server") + " --etcd-image " + localEtcdImage() +
+	return ("--image " + LocalImage("dotmesh-server") + " --etcd-image " + localEtcdImage() +
 		" --docker-api-version 1.23 --discovery-url http://" + HOST_IP_FROM_CONTAINER + ":8087" +
 		logSuffix + traceSuffix + regSuffix)
 }
@@ -844,8 +847,8 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			docker exec $MASTER sed -i 's/size: 3/size: 1/' /dotmesh-kube-yaml/dotmesh.yaml
 			`,
 			nodeName(now, i, 0),
-			strings.Replace(localImage("dotmesh-server"), "/", "\\/", -1),
-			strings.Replace(localImage("dotmesh-dynamic-provisioner"), "/", "\\/", -1),
+			strings.Replace(LocalImage("dotmesh-server"), "/", "\\/", -1),
+			strings.Replace(LocalImage("dotmesh-dynamic-provisioner"), "/", "\\/", -1),
 			// need to somehow number the instances, did this by modifying
 			// require_zfs.sh to include the hostname in the pool name to make
 			// them unique... TODO: make sure we clear these up
