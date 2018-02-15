@@ -1,3 +1,6 @@
+package citools
+
+const DIND_SCRIPT = `
 #!/bin/bash
 # Copyright 2017 Mirantis
 #
@@ -1004,3 +1007,4 @@ case "${1:-}" in
     exit 1
     ;;
 esac
+`
