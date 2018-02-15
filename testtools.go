@@ -23,7 +23,7 @@ var lastTiming int64
 
 const HOST_IP_FROM_CONTAINER = "10.192.0.1"
 
-func contains(arr []string, str string) bool {
+func Contains(arr []string, str string) bool {
 	for _, a := range arr {
 		if strings.Contains(a, str) {
 			return true
