@@ -52,7 +52,7 @@ func dumpTiming() {
 	timings = map[string]float64{}
 }
 
-func system(cmd string, args ...string) error {
+func System(cmd string, args ...string) error {
 	log.Printf("[system] running %s %s", cmd, args)
 	c := exec.Command(cmd, args...)
 	c.Stdout = os.Stdout
@@ -60,7 +60,7 @@ func system(cmd string, args ...string) error {
 	return c.Run()
 }
 
-func silentSystem(cmd string, args ...string) error {
+func SilentSystem(cmd string, args ...string) error {
 	log.Printf("[silentSystem] running %s %s", cmd, args)
 	c := exec.Command(cmd, args...)
 	return c.Run()
@@ -89,7 +89,7 @@ func TestMarkForCleanup(f Federation) {
 		for _, n := range c.GetNodes() {
 			node := n.Container
 			err := TryUntilSucceeds(func() error {
-				return system("bash", "-c", fmt.Sprintf(
+				return System("bash", "-c", fmt.Sprintf(
 					`docker exec -t %s bash -c 'touch /CLEAN_ME_UP'`, node,
 				))
 			}, fmt.Sprintf("marking %s for cleanup", node))
@@ -102,7 +102,7 @@ func TestMarkForCleanup(f Federation) {
 }
 
 func testSetup(f Federation, stamp int64) error {
-	err := system("bash", "-c", `
+	err := System("bash", "-c", `
 		# Create a home for the test pools to live that can have the same path
 		# both from ZFS's perspective and that of the inner container.
 		# (Bind-mounts all the way down.)
@@ -123,7 +123,7 @@ func testSetup(f Federation, stamp int64) error {
 			fmt.Printf(">>> Using RunArgs %s\n", c.RunArgs(i, j))
 
 			// XXX the following only works if overlay is working
-			err := system("bash", "-c", fmt.Sprintf(`
+			err := System("bash", "-c", fmt.Sprintf(`
 			set -xe
 			mkdir -p /dotmesh-test-pools
 			MOUNTPOINT=/dotmesh-test-pools
@@ -203,7 +203,7 @@ func testSetup(f Federation, stamp int64) error {
 				if !strings.Contains(image, "/") {
 					image = LocalImage(image)
 				}
-				err := system("bash", "-c", fmt.Sprintf(`
+				err := System("bash", "-c", fmt.Sprintf(`
 					set -xe
 					docker pull %s
 					docker save %s | docker exec -i %s docker load
@@ -250,7 +250,7 @@ func TeardownFinishedTestRuns() {
 
 	// Containers that weren't marked as CLEAN_ME_UP but which are older than
 	// an hour, assume they should be cleaned up.
-	err := system("../scripts/mark-old-cleanup.sh")
+	err := System("../scripts/mark-old-cleanup.sh")
 	if err != nil {
 		log.Printf("Error running mark-old-cleanup.sh: %s", err)
 	}
@@ -303,7 +303,7 @@ func TeardownFinishedTestRuns() {
 				}
 
 				node := nodeName(stamp, cn, nn)
-				existsErr := silentSystem("docker", "inspect", node)
+				existsErr := SilentSystem("docker", "inspect", node)
 				notExists := false
 				if existsErr != nil {
 					// must have been a single-node test, don't return on our
@@ -311,7 +311,7 @@ func TeardownFinishedTestRuns() {
 					notExists = true
 				}
 
-				err = system("docker", "exec", "-i", node, "test", "-e", "/CLEAN_ME_UP")
+				err = System("docker", "exec", "-i", node, "test", "-e", "/CLEAN_ME_UP")
 				if err != nil {
 					fmt.Printf("not cleaning up %s because /CLEAN_ME_UP not found\n", node)
 					if !notExists {
@@ -319,19 +319,19 @@ func TeardownFinishedTestRuns() {
 					}
 				}
 
-				err = system("docker", "rm", "-f", "-v", node)
+				err = System("docker", "rm", "-f", "-v", node)
 				if err != nil {
 					fmt.Printf("erk during teardown %s\n", err)
 				}
 
 				// workaround https://github.com/docker/docker/issues/20398
-				err = system("docker", "network", "disconnect", "-f", "bridge", node)
+				err = System("docker", "network", "disconnect", "-f", "bridge", node)
 				if err != nil {
 					fmt.Printf("erk during network force-disconnect %s\n", err)
 				}
 
 				// cleanup after a previous test run; this is a pretty gross hack
-				err = system("bash", "-c", fmt.Sprintf(`
+				err = System("bash", "-c", fmt.Sprintf(`
 					for X in $(findmnt -P -R /tmpfs |grep %s); do
 						eval $X
 						if [ "$TARGET" != "/tmpfs" ]; then
@@ -385,7 +385,7 @@ func TeardownFinishedTestRuns() {
 			fmt.Printf("unable to prune docker volumes: %s, %s\n", err, out)
 		}
 	}
-	err = system("docker", "container", "prune", "-f")
+	err = System("docker", "container", "prune", "-f")
 	if err != nil {
 		fmt.Printf("Error from docker container prune -f: %v", err)
 	}
@@ -414,7 +414,7 @@ func docker(node string, cmd string, env map[string]string) (string, error) {
 }
 
 func dockerSystem(node string, cmd string) error {
-	return system("docker", "exec", "-i", node, "sh", "-c", cmd)
+	return System("docker", "exec", "-i", node, "sh", "-c", cmd)
 }
 
 func RunOnNode(t *testing.T, node string, cmd string) {
@@ -834,7 +834,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 
 	// TODO regex the following yamels to refer to the newly pushed
 	// dotmesh container image, rather than the latest stable
-	err = system("bash", "-c",
+	err = System("bash", "-c",
 		fmt.Sprintf(
 			`MASTER=%s
 			docker exec $MASTER mkdir /dotmesh-kube-yaml
