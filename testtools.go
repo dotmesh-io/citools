@@ -417,7 +417,7 @@ func dockerSystem(node string, cmd string) error {
 	return system("docker", "exec", "-i", node, "sh", "-c", cmd)
 }
 
-func d(t *testing.T, node string, cmd string) {
+func runOnNode(t *testing.T, node string, cmd string) {
 	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
 	s, err := docker(node, cmd, nil)
 	if err != nil {
@@ -452,7 +452,7 @@ func kubectlApply(t *testing.T, node string, input string) {
 	}
 }
 
-func s(t *testing.T, node string, cmd string) string {
+func outputFromRunOnNode(t *testing.T, node string, cmd string) string {
 	s, err := docker(node, cmd, nil)
 	if err != nil {
 		t.Error(fmt.Errorf("%s while running %s on %s: %s", err, cmd, node, s))
@@ -643,11 +643,11 @@ func poolId(now int64, i, j int) string {
 }
 
 func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Node {
-	nodeIP := strings.TrimSpace(s(t,
+	nodeIP := strings.TrimSpace(outputFromRunOnNode(t,
 		nodeName(now, i, j),
 		`ifconfig eth0 | grep "inet addr" | cut -d ':' -f 2 | cut -d ' ' -f 1`,
 	))
-	dotmeshConfig := s(t,
+	dotmeshConfig := outputFromRunOnNode(t,
 		nodeName(now, i, j),
 		"cat /root/.dotmesh/config",
 	)
@@ -657,7 +657,7 @@ func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Nod
 	// clusters, but k8s clusters are configured from k8s secrets so
 	// there's no automatic password generation; the value we show here
 	// is what we hardcode as the password.
-	password := s(t,
+	password := outputFromRunOnNode(t,
 		nodeName(now, i, j),
 		"sh -c 'if [ -f /root/.dotmesh/admin-password.txt ]; then cat /root/.dotmesh/admin-password.txt; else echo -n FAKEAPIKEY; fi'",
 	)
@@ -712,23 +712,24 @@ func (f Federation) Start(t *testing.T) error {
 	}
 	for _, pair := range pairs {
 		found := false
-		for _, remote := range strings.Split(s(t, pair.From.Container, "dm remote"), "\n") {
+		for _, remote := range strings.Split(outputFromRunOnNode(t,
+			pair.From.Container, "dm remote"), "\n") {
 			if remote == pair.To.ClusterName {
 				found = true
 			}
 		}
 		if !found {
-			d(t, pair.From.Container, fmt.Sprintf(
+			runOnNode(t, pair.From.Container, fmt.Sprintf(
 				"echo %s |dm remote add %s admin@%s",
 				pair.To.ApiKey,
 				pair.To.ClusterName,
 				pair.To.IP,
 			))
-			res := s(t, pair.From.Container, "dm remote -v")
+			res := outputFromRunOnNode(t, pair.From.Container, "dm remote -v")
 			if !strings.Contains(res, pair.To.ClusterName) {
 				t.Errorf("can't find %s in %s's remote config", pair.To.ClusterName, pair.From.ClusterName)
 			}
-			d(t, pair.From.Container, "dm remote switch local")
+			runOnNode(t, pair.From.Container, "dm remote switch local")
 		}
 	}
 	return nil
@@ -954,7 +955,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	// removing this will be a good test of that issue :-)
 	fmt.Printf("Waiting for etcd...\n")
 	for {
-		resp := s(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
+		resp := outputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
 		if err != nil {
 			return err
 		}
@@ -1049,10 +1050,10 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 
 func createDockerNetwork(t *testing.T, node string) {
 	fmt.Printf("Creating Docker network on %s", node)
-	d(t, node, fmt.Sprintf(`
+	runOnNode(t, node, fmt.Sprintf(`
 		docker network create dotmesh-dev  &>/dev/null || true
 	`))
-	d(t, node, fmt.Sprintf(`
+	runOnNode(t, node, fmt.Sprintf(`
 		docker network connect dotmesh-dev dotmesh-server-inner
 	`))
 }
