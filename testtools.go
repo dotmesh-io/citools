@@ -165,8 +165,28 @@ func testSetup(f Federation, stamp int64) error {
 					systemctl restart docker
 				'
 			fi
-			docker cp ../binaries/Linux/dm $NODE:/usr/local/bin/dm
 			`, node, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER))
+			if err != nil {
+				return err
+			}
+
+			// if we are testing dotmesh - then the binary under test will have
+			// already been created - otherwise, download the latest master build
+			// this is to be consistent with LocalImage()
+			serviceBeingTested := os.Getenv("CI_SERVICE_BEING_TESTED")
+			getDmCommand := fmt.Sprintf("NODE=%s\n", node)
+
+			if serviceBeingTested == "dotmesh" {
+				getDmCommand += "docker cp ../binaries/Linux/dm $NODE:/usr/local/bin/dm"
+			} else {
+				getDmCommand += `
+					curl -L -o /tmp/dm https://get.dotmesh.io/unstable/master/Linux/dm
+					chmod a+x /tmp/dm
+					docker cp /tmp/dm $NODE:/usr/local/bin/dm
+				`
+			}
+
+			err = System("bash", "-c", getDmCommand)
 			if err != nil {
 				return err
 			}
@@ -498,7 +518,8 @@ func LocalImage(service string) string {
 	// use the GIT_HASH from CI for that service and master for everything else
 	// (which is the last build of that repo that passed the tests on master)
 	if serviceBeingTested != service {
-		tag = "master"
+		// TODO : this should master but we havn't got that building yet
+		tag = "latest"
 	}
 	return fmt.Sprintf("%s/%s:%s", registry, service, tag)
 }
