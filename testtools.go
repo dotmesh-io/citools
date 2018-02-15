@@ -32,12 +32,12 @@ func contains(arr []string, str string) bool {
 	return false
 }
 
-func startTiming() {
+func StartTiming() {
 	lastTiming = time.Now().UnixNano()
 	timings = make(map[string]float64)
 }
 
-func logTiming(tag string) {
+func LogTiming(tag string) {
 	now := time.Now().UnixNano()
 	timings[tag] = float64(now-lastTiming) / (1000 * 1000 * 1000)
 	lastTiming = now
@@ -66,7 +66,7 @@ func silentSystem(cmd string, args ...string) error {
 	return c.Run()
 }
 
-func tryUntilSucceeds(f func() error, desc string) error {
+func TryUntilSucceeds(f func() error, desc string) error {
 	attempt := 0
 	for {
 		err := f()
@@ -84,11 +84,11 @@ func tryUntilSucceeds(f func() error, desc string) error {
 	}
 }
 
-func testMarkForCleanup(f Federation) {
+func TestMarkForCleanup(f Federation) {
 	for _, c := range f {
 		for _, n := range c.GetNodes() {
 			node := n.Container
-			err := tryUntilSucceeds(func() error {
+			err := TryUntilSucceeds(func() error {
 				return system("bash", "-c", fmt.Sprintf(
 					`docker exec -t %s bash -c 'touch /CLEAN_ME_UP'`, node,
 				))
@@ -225,7 +225,7 @@ type N struct {
 	NodeNum    string
 }
 
-func teardownFinishedTestRuns() {
+func TeardownFinishedTestRuns() {
 	// There maybe other teardown processes running in parallel with this one.
 	// Check, and if there are, wait for it to complete and then return.
 	lockfile := "/dotmesh-test-cleanup.lock"
@@ -261,7 +261,7 @@ func teardownFinishedTestRuns() {
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("[teardownFinishedTestRuns] cs = %s", cs)
+	log.Printf("[TeardownFinishedTestRuns] cs = %s", cs)
 	stamps := map[int64][]N{}
 	for _, line := range strings.Split(string(cs), "\n") {
 		shrap := strings.Split(line, "-")
@@ -417,7 +417,7 @@ func dockerSystem(node string, cmd string) error {
 	return system("docker", "exec", "-i", node, "sh", "-c", cmd)
 }
 
-func runOnNode(t *testing.T, node string, cmd string) {
+func RunOnNode(t *testing.T, node string, cmd string) {
 	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
 	s, err := docker(node, cmd, nil)
 	if err != nil {
@@ -425,8 +425,8 @@ func runOnNode(t *testing.T, node string, cmd string) {
 	}
 }
 
-// e.g. kubectlApply(t, node1, `yaml...`)
-func kubectlApply(t *testing.T, node string, input string) {
+// e.g. KubectlApply(t, node1, `yaml...`)
+func KubectlApply(t *testing.T, node string, input string) {
 	c := exec.Command("docker", "exec", "-i", node, "kubectl", "apply", "-f", "-")
 
 	var b bytes.Buffer
@@ -452,7 +452,7 @@ func kubectlApply(t *testing.T, node string, input string) {
 	}
 }
 
-func outputFromRunOnNode(t *testing.T, node string, cmd string) string {
+func OutputFromRunOnNode(t *testing.T, node string, cmd string) string {
 	s, err := docker(node, cmd, nil)
 	if err != nil {
 		t.Error(fmt.Errorf("%s while running %s on %s: %s", err, cmd, node, s))
@@ -522,7 +522,7 @@ func localImageArgs() string {
 
 // TODO a test which exercise `dm cluster init --count 3` or so
 
-func dockerRun(v ...string) string {
+func DockerRun(v ...string) string {
 	// supports either 1 or 2 args. in 1-arg case, just takes a volume name.
 	// in 2-arg case, takes volume name and arguments to pass to docker run.
 	// in 3-arg case, third arg is image in "$(hostname).local:80/$image".
@@ -552,7 +552,7 @@ func dockerRun(v ...string) string {
 	}
 }
 
-func dockerRunDetached(v ...string) string {
+func DockerRunDetached(v ...string) string {
 	// supports either 1 or 2 args. in 1-arg case, just takes a volume name.
 	// in 2-arg case, takes volume name and arguments to pass to docker run.
 	// in 3-arg case, third arg is image in "$(hostname).local:80/$image".
@@ -584,7 +584,7 @@ func dockerRunDetached(v ...string) string {
 
 var uniqNumber int
 
-func uniqName() string {
+func UniqName() string {
 	uniqNumber++
 	return fmt.Sprintf("volume_%d", uniqNumber)
 }
@@ -643,11 +643,11 @@ func poolId(now int64, i, j int) string {
 }
 
 func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Node {
-	nodeIP := strings.TrimSpace(outputFromRunOnNode(t,
+	nodeIP := strings.TrimSpace(OutputFromRunOnNode(t,
 		nodeName(now, i, j),
 		`ifconfig eth0 | grep "inet addr" | cut -d ':' -f 2 | cut -d ' ' -f 1`,
 	))
-	dotmeshConfig := outputFromRunOnNode(t,
+	dotmeshConfig := OutputFromRunOnNode(t,
 		nodeName(now, i, j),
 		"cat /root/.dotmesh/config",
 	)
@@ -657,7 +657,7 @@ func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Nod
 	// clusters, but k8s clusters are configured from k8s secrets so
 	// there's no automatic password generation; the value we show here
 	// is what we hardcode as the password.
-	password := outputFromRunOnNode(t,
+	password := OutputFromRunOnNode(t,
 		nodeName(now, i, j),
 		"sh -c 'if [ -f /root/.dotmesh/admin-password.txt ]; then cat /root/.dotmesh/admin-password.txt; else echo -n FAKEAPIKEY; fi'",
 	)
@@ -684,7 +684,7 @@ func (f Federation) Start(t *testing.T) error {
 	if err != nil {
 		return err
 	}
-	logTiming("setup")
+	LogTiming("setup")
 
 	for i, c := range f {
 		fmt.Printf("==== GOING FOR %d, %+v ====\n", i, c)
@@ -712,24 +712,24 @@ func (f Federation) Start(t *testing.T) error {
 	}
 	for _, pair := range pairs {
 		found := false
-		for _, remote := range strings.Split(outputFromRunOnNode(t,
+		for _, remote := range strings.Split(OutputFromRunOnNode(t,
 			pair.From.Container, "dm remote"), "\n") {
 			if remote == pair.To.ClusterName {
 				found = true
 			}
 		}
 		if !found {
-			runOnNode(t, pair.From.Container, fmt.Sprintf(
+			RunOnNode(t, pair.From.Container, fmt.Sprintf(
 				"echo %s |dm remote add %s admin@%s",
 				pair.To.ApiKey,
 				pair.To.ClusterName,
 				pair.To.IP,
 			))
-			res := outputFromRunOnNode(t, pair.From.Container, "dm remote -v")
+			res := OutputFromRunOnNode(t, pair.From.Container, "dm remote -v")
 			if !strings.Contains(res, pair.To.ClusterName) {
 				t.Errorf("can't find %s in %s's remote config", pair.To.ClusterName, pair.From.ClusterName)
 			}
-			runOnNode(t, pair.From.Container, "dm remote switch local")
+			RunOnNode(t, pair.From.Container, "dm remote switch local")
 		}
 	}
 	return nil
@@ -903,7 +903,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		if err != nil {
 			return err
 		}
-		logTiming("join_" + poolId(now, i, j))
+		LogTiming("join_" + poolId(now, i, j))
 	}
 	// now install dotmesh yaml (setting initial admin pw)
 	st, err = docker(
@@ -955,7 +955,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	// removing this will be a good test of that issue :-)
 	fmt.Printf("Waiting for etcd...\n")
 	for {
-		resp := outputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
+		resp := OutputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
 		if err != nil {
 			return err
 		}
@@ -1028,7 +1028,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 	if joinUrl == "" {
 		return fmt.Errorf("unable to find join url in 'dm cluster init' output")
 	}
-	logTiming("init_" + poolId(now, i, 0))
+	LogTiming("init_" + poolId(now, i, 0))
 	for j := 1; j < c.DesiredNodeCount; j++ {
 		// if c.Nodes is 3, this iterates over 1 and 2 (0 was the init'd
 		// node).
@@ -1043,17 +1043,17 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		}
 		c.Nodes = append(c.Nodes, NodeFromNodeName(t, now, i, j, clusterName))
 
-		logTiming("join_" + poolId(now, i, j))
+		LogTiming("join_" + poolId(now, i, j))
 	}
 	return nil
 }
 
 func createDockerNetwork(t *testing.T, node string) {
 	fmt.Printf("Creating Docker network on %s", node)
-	runOnNode(t, node, fmt.Sprintf(`
+	RunOnNode(t, node, fmt.Sprintf(`
 		docker network create dotmesh-dev  &>/dev/null || true
 	`))
-	runOnNode(t, node, fmt.Sprintf(`
+	RunOnNode(t, node, fmt.Sprintf(`
 		docker network connect dotmesh-dev dotmesh-server-inner
 	`))
 }
@@ -1075,7 +1075,7 @@ func uniqLogin() UserLogin {
 	}
 }
 
-func registerUser(node Node, username, email, password string) error {
+func RegisterUser(node Node, username, email, password string) error {
 	fmt.Printf("Registering test user %s on node %s\n", username, node.IP)
 
 	var safeUser struct {
@@ -1087,7 +1087,7 @@ func registerUser(node Node, username, email, password string) error {
 		CurrentPlan string
 	}
 
-	err := doRPC(node.IP, "admin", node.ApiKey,
+	err := DoRPC(node.IP, "admin", node.ApiKey,
 		"DotmeshRPC.RegisterNewUser",
 		struct {
 			Name, Email, Password string
@@ -1103,7 +1103,7 @@ func registerUser(node Node, username, email, password string) error {
 	return nil
 }
 
-func doRPC(hostname, user, apiKey, method string, args interface{}, result interface{}) error {
+func DoRPC(hostname, user, apiKey, method string, args interface{}, result interface{}) error {
 	url := fmt.Sprintf("http://%s:6969/rpc", hostname)
 	message, err := json2.EncodeClientRequest(method, args)
 	if err != nil {
@@ -1140,10 +1140,10 @@ func doRPC(hostname, user, apiKey, method string, args interface{}, result inter
 	return nil
 }
 
-func doSetDebugFlag(hostname, user, apikey, flag, value string) (string, error) {
+func DoSetDebugFlag(hostname, user, apikey, flag, value string) (string, error) {
 	var result string
 
-	err := doRPC(hostname, user, apikey,
+	err := DoRPC(hostname, user, apikey,
 		"DotmeshRPC.SetDebugFlag",
 		struct {
 			FlagName  string
@@ -1161,7 +1161,7 @@ func doSetDebugFlag(hostname, user, apikey, flag, value string) (string, error) 
 	return result, nil
 }
 
-func doAddCollaborator(hostname, user, apikey, namespace, volume, collaborator string) error {
+func DoAddCollaborator(hostname, user, apikey, namespace, volume, collaborator string) error {
 	// FIXME: Duplicated types, see issue #44
 	type VolumeName struct {
 		Namespace string
@@ -1179,7 +1179,7 @@ func doAddCollaborator(hostname, user, apikey, namespace, volume, collaborator s
 		ServerStatuses map[string]string // serverId => status
 	}
 
-	err := doRPC(hostname, user, apikey,
+	err := DoRPC(hostname, user, apikey,
 		"DotmeshRPC.List",
 		struct {
 		}{},
@@ -1191,7 +1191,7 @@ func doAddCollaborator(hostname, user, apikey, namespace, volume, collaborator s
 	volumeID := volumes[namespace][volume].Id
 
 	var result bool
-	err = doRPC(hostname, user, apikey,
+	err = DoRPC(hostname, user, apikey,
 		"DotmeshRPC.AddCollaborator",
 		struct {
 			MasterBranchID, Collaborator string
