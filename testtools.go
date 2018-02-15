@@ -460,7 +460,7 @@ func OutputFromRunOnNode(t *testing.T, node string, cmd string) string {
 	return s
 }
 
-func helperImage(service string) string {
+func HelperImage(service string) string {
 	var registry string
 	// expected format: quay.io/dotmesh for example
 	if reg := os.Getenv("CI_DOCKER_REGISTRY"); reg != "" {
