@@ -137,7 +137,7 @@ func testSetup(f Federation, stamp int64) error {
 			EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared" \
 			DIND_IMAGE="quay.io/lukemarsden/kubeadm-dind-cluster:v1.7-hostport" \
 			CNI_PLUGIN=weave \
-				../kubernetes/dind-cluster-v1.7.sh bare $NODE %s
+				$GOPATH/src/github.com/dotmesh-io/citools/kubernetes/dind-cluster-v1.7.sh bare $NODE %s
 			sleep 1
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
@@ -494,6 +494,9 @@ func LocalImage(service string) string {
 	if tag == "" {
 		tag = "latest"
 	}
+	// this means that if the X service is the one being tested - then
+	// use the GIT_HASH from CI for that service and master for everything else
+	// (which is the last build of that repo that passed the tests on master)
 	if serviceBeingTested != service {
 		tag = "master"
 	}
@@ -1051,7 +1054,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 	return nil
 }
 
-func createDockerNetwork(t *testing.T, node string) {
+func CreateDockerNetwork(t *testing.T, node string) {
 	fmt.Printf("Creating Docker network on %s", node)
 	RunOnNode(t, node, fmt.Sprintf(`
 		docker network create dotmesh-dev  &>/dev/null || true
@@ -1069,7 +1072,7 @@ type UserLogin struct {
 
 var uniqUserNumber int
 
-func uniqLogin() UserLogin {
+func UniqLogin() UserLogin {
 	uniqUserNumber++
 	return UserLogin{
 		Email:    fmt.Sprintf("test%d@test.com", uniqUserNumber),
