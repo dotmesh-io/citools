@@ -610,8 +610,9 @@ type Kubernetes struct {
 }
 
 type Pair struct {
-	From Node
-	To   Node
+	From       Node
+	To         Node
+	RemoteName string
 }
 
 func NewCluster(desiredNodeCount int) *Cluster {
@@ -708,9 +709,17 @@ func (f Federation) Start(t *testing.T) error {
 			for _, otherCluster := range f {
 				first := otherCluster.GetNode(0)
 				pairs = append(pairs, Pair{
-					From: node,
-					To:   first,
+					From:       node,
+					To:         first,
+					RemoteName: first.ClusterName,
 				})
+				for i, oNode := range otherCluster.GetNodes() {
+					pairs = append(pairs, Pair{
+						From:       node,
+						To:         oNode,
+						RemoteName: fmt.Sprintf("%s_node_%d", first.ClusterName, i),
+					})
+				}
 			}
 		}
 	}
@@ -718,7 +727,7 @@ func (f Federation) Start(t *testing.T) error {
 		found := false
 		for _, remote := range strings.Split(OutputFromRunOnNode(t,
 			pair.From.Container, "dm remote"), "\n") {
-			if remote == pair.To.ClusterName {
+			if remote == pair.RemoteName {
 				found = true
 			}
 		}
@@ -726,12 +735,12 @@ func (f Federation) Start(t *testing.T) error {
 			RunOnNode(t, pair.From.Container, fmt.Sprintf(
 				"echo %s |dm remote add %s admin@%s",
 				pair.To.ApiKey,
-				pair.To.ClusterName,
+				pair.RemoteName,
 				pair.To.IP,
 			))
 			res := OutputFromRunOnNode(t, pair.From.Container, "dm remote -v")
-			if !strings.Contains(res, pair.To.ClusterName) {
-				t.Errorf("can't find %s in %s's remote config", pair.To.ClusterName, pair.From.ClusterName)
+			if !strings.Contains(res, pair.RemoteName) {
+				t.Errorf("can't find %s in %s's remote config", pair.RemoteName, pair.From.ClusterName)
 			}
 			RunOnNode(t, pair.From.Container, "dm remote switch local")
 		}
