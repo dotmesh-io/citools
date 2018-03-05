@@ -5,4 +5,3 @@ RUN cd /tmp && mkdir cni-plugins && cd cni-plugins && \
     cp /tmp/cni-plugins/* /opt/cni/bin/
 COPY dindnet /usr/local/bin/dindnet
 COPY cni.conflist /etc/cni/net.d/01-weave-hostport.conflist
-# TODO: we need the gcloud CLI installed into this image so we can pull from GCR
