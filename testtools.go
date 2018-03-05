@@ -117,16 +117,19 @@ func testSetup(f Federation, stamp int64) error {
 		return err
 	}
 
+	// TODO XXX ioutil.WriteFile is not atomic, this means that concurrent test
+	// runs could corrupt it :-(
+
 	// we write the dind-script.sh file out from go because we need to distribute
 	// that .sh script as a go package using dep
-	err = ioutil.WriteFile("./dind-cluster-v1.7.sh", []byte(DIND_SCRIPT), 0755)
+	err = ioutil.WriteFile("./dind-cluster-v1.9.sh", []byte(DIND_SCRIPT), 0755)
 	if err != nil {
 		return err
 	}
 
 	// don't leave copies of the script around once we have used it
 	defer func() {
-		os.Remove("./dind-cluster-v1.7.sh")
+		os.Remove("./dind-cluster-v1.9.sh")
 	}()
 
 	for i, c := range f {
@@ -157,9 +160,8 @@ func testSetup(f Federation, stamp int64) error {
 				mount --make-shared $MOUNTPOINT;
 			fi
 			EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
-			DIND_IMAGE="quay.io/lukemarsden/kubeadm-dind-cluster:v1.7-hostport" \
 			CNI_PLUGIN=weave \
-				./dind-cluster-v1.7.sh bare $NODE %s
+				./dind-cluster-v1.9.sh bare $NODE %s
 			sleep 1
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
@@ -870,13 +872,34 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	if err != nil {
 		return err
 	}
+	// TODO: I am worried about pod network cidr collisions
+	// between concurrent test runs.
+	kubeadmConf := `
+apiVersion: kubeadm.k8s.io/v1alpha1
+unifiedControlPlaneImage: mirantis/hypokube:final
+kind: MasterConfiguration
+kubernetesVersion: 1.9.3
+api:
+  advertiseAddress: "10.192.0.2"
+networking:
+  # podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+tokenTTL: 0s
+nodeName: kube-master
+apiServerExtraArgs:
+  insecure-bind-address: "0.0.0.0"
+  insecure-port: "8080"
+`
 	st, err := docker(
 		nodeName(now, i, 0),
 		"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
+			fmt.Sprintf(
+				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n"),
+			)+
 			"systemctl start kubelet && "+
-			"kubeadm init --kubernetes-version=v1.7.6 --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks && "+
+			"kubeadm init --kubernetes-version=v1.9.3 --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks && "+
 			"mkdir /root/.kube && cp /etc/kubernetes/admin.conf /root/.kube/config && "+
-			// Make kube-dns faster; trick copied from dind-cluster-v1.7.sh
+			// Make kube-dns faster; trick copied from dind-cluster-v1.9.sh (maybe, hopefully it didn't change from 1.7 -> 1.9)
 			"kubectl get deployment kube-dns -n kube-system -o json | jq '.spec.template.spec.containers[0].readinessProbe.initialDelaySeconds = 3|.spec.template.spec.containers[0].readinessProbe.periodSeconds = 3' | kubectl apply --force -f -",
 		nil,
 	)
