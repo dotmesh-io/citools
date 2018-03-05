@@ -532,7 +532,7 @@ func DockerRun(v ...string) string {
 		panic(err)
 	}
 	image := "busybox"
-	if len(v) == 3 {
+	if len(v) >= 3 {
 		image = v[2]
 	}
 	path := "/foo"
