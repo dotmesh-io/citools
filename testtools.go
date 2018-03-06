@@ -18,6 +18,17 @@ import (
 	"github.com/gorilla/rpc/v2/json2"
 )
 
+// props to https://github.com/kubernetes/kubernetes/issues/49387
+var KUBE_DEBUG_CMD = `kubectl get pods --all-namespaces 2>/dev/null
+for INTERESTING_POD in $(kubectl get pods --all-namespaces -o json 2>/dev/null | jq -r '.items[] | select(.status.phase != "Running" or ([ .status.conditions[] | select(.type == "Ready" and .state == false) ] | length ) == 1 ) | .metadata.name + "/" + .metadata.namespace'); do
+   NAME=$(echo $INTERESTING_POD |cut -d "/" -f 1)
+   NS=$(echo $INTERESTING_POD |cut -d "/" -f 2)
+   echo "status of $INTERESTING_POD"
+   kubectl describe pod $NAME -n $NS
+   echo "logs of $INTERESTING_POD"
+   kubectl logs --tail 10 $NAME -n $NS
+done`
+
 var timings map[string]float64
 var lastTiming int64
 
@@ -940,7 +951,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			// install dotmesh once on the master (retry because etcd operator
 			// needs to initialize)
 			"sleep 1 && "+
-			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 1; kubectl get pods --all-namespaces; done && "+
+			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 1; "+KUBE_DEBUG_CMD+"; done && "+
 			"kubectl apply -f /dotmesh-kube-yaml/dotmesh.yaml",
 		nil,
 	)
@@ -959,7 +970,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 					echo FAKEAPIKEY | dm remote add local admin@127.0.0.1 &&
 					systemctl restart kubelet
 				); do
-				echo 'retrying...' && sleep 1; kubectl get pods --all-namespaces;
+				echo 'retrying...' && sleep 1; `+KUBE_DEBUG_CMD+`;
 			done`,
 			nil,
 		)
@@ -986,7 +997,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		time.Sleep(time.Second)
 		st, err = docker(
 			nodeName(now, i, 0),
-			"kubectl get pods --all-namespaces",
+			KUBE_DEBUG_CMD,
 			nil,
 		)
 		if err != nil {
