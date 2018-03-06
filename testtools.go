@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,6 +33,13 @@ func Contains(arr []string, str string) bool {
 	}
 	return false
 }
+
+func AddFuncToCleanups(f func()) {
+	log.Printf("ADDING CLEANUP FUNC %+v", f)
+	globalCleanupFuncs = append(globalCleanupFuncs, f)
+}
+
+var globalCleanupFuncs []func()
 
 func StartTiming() {
 	lastTiming = time.Now().UnixNano()
@@ -250,11 +258,15 @@ func TeardownFinishedTestRuns() {
 		signal.Notify(c, syscall.SIGQUIT)
 
 		// Block until a signal is received.
+		log.Printf("WAITING FOR THE SIGNAL")
 		s := <-c
-		fmt.Println("Got signal:", s)
+		log.Printf("Got signal:", s)
 		for _, f := range globalCleanupFuncs {
+			log.Printf("RUNNING CLEANUP FUNC")
 			f()
 		}
+		log.Printf("DONE CLEANUP")
+		os.Exit(131)
 
 	}()
 
