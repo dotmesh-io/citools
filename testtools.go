@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -236,6 +237,27 @@ type N struct {
 }
 
 func TeardownFinishedTestRuns() {
+
+	// Handle SIGQUIT and mark tests for cleanup in that case, then immediately
+	// exit.
+
+	go func() {
+		// From https://golang.org/pkg/os/signal/#Notify
+		// Set up channel on which to send signal notifications.
+		// We must use a buffered channel or risk missing the signal
+		// if we're not ready to receive when the signal is sent.
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGQUIT)
+
+		// Block until a signal is received.
+		s := <-c
+		fmt.Println("Got signal:", s)
+		for _, f := range globalCleanupFuncs {
+			f()
+		}
+
+	}()
+
 	// There maybe other teardown processes running in parallel with this one.
 	// Check, and if there are, wait for it to complete and then return.
 	lockfile := "/dotmesh-test-cleanup.lock"
