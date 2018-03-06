@@ -940,7 +940,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			// install dotmesh once on the master (retry because etcd operator
 			// needs to initialize)
 			"sleep 1 && "+
-			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 1; kubectl get pods -n dotmesh; done && "+
+			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 1; kubectl get pods --all-namespaces; done && "+
 			"kubectl apply -f /dotmesh-kube-yaml/dotmesh.yaml",
 		nil,
 	)
@@ -959,7 +959,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 					echo FAKEAPIKEY | dm remote add local admin@127.0.0.1 &&
 					systemctl restart kubelet
 				); do
-				echo 'retrying...' && sleep 1; kubectl get pods -n dotmesh;
+				echo 'retrying...' && sleep 1; kubectl get pods --all-namespaces;
 			done`,
 			nil,
 		)
@@ -986,7 +986,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		time.Sleep(time.Second)
 		st, err = docker(
 			nodeName(now, i, 0),
-			"kubectl get pods -n dotmesh",
+			"kubectl get pods --all-namespaces",
 			nil,
 		)
 		if err != nil {
