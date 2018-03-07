@@ -965,7 +965,7 @@ apiServerExtraArgs:
 		nodeName(now, i, 0),
 		"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
 			fmt.Sprintf(
-				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n"),
+				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n", -1),
 			)+
 			"systemctl start kubelet && "+
 			"kubeadm init --kubernetes-version=v1.9.3 --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks && "+
