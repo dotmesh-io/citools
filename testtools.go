@@ -138,19 +138,18 @@ func testSetup(f Federation, stamp int64) error {
 		return err
 	}
 
-	// TODO XXX ioutil.WriteFile is not atomic, this means that concurrent test
-	// runs could corrupt it :-(
+	dindClusterScriptName := fmt.Sprintf("./dind-cluster-%d.sh", os.Getpid())
 
 	// we write the dind-script.sh file out from go because we need to distribute
 	// that .sh script as a go package using dep
-	err = ioutil.WriteFile("./dind-cluster-v1.9.sh", []byte(DIND_SCRIPT), 0755)
+	err = ioutil.WriteFile(dindClusterScriptName, []byte(DIND_SCRIPT), 0755)
 	if err != nil {
 		return err
 	}
 
 	// don't leave copies of the script around once we have used it
 	defer func() {
-		os.Remove("./dind-cluster-v1.9.sh")
+		os.Remove(dindClusterScriptName)
 	}()
 
 	for i, c := range f {
@@ -182,7 +181,7 @@ func testSetup(f Federation, stamp int64) error {
 			fi
 			EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
 			CNI_PLUGIN=weave \
-				./dind-cluster-v1.9.sh bare $NODE %s
+				%s bare $NODE %s
 			sleep 1
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
@@ -210,7 +209,7 @@ func testSetup(f Federation, stamp int64) error {
 					systemctl restart docker
 				'
 			fi
-			`, node, mountDockerAuth, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER))
+			`, node, mountDockerAuth, dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER, HOST_IP_FROM_CONTAINER))
 			if err != nil {
 				return err
 			}
