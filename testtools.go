@@ -885,6 +885,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				panic(st)
 			}
 			for fqImage, localName := range cache {
+				fmt.Printf("Pulling %s.local:80/%s\n", hostname, localName)
 				st, err := docker(
 					nodeName(now, i, j),
 					/*
@@ -949,11 +950,11 @@ apiVersion: kubeadm.k8s.io/v1alpha1
 unifiedControlPlaneImage: mirantis/hypokube:final
 kind: MasterConfiguration
 kubernetesVersion: 1.9.3
-api:
-  advertiseAddress: "10.192.0.2"
+#api:
+#  advertiseAddress: "10.192.0.2"
 networking:
-  # podSubnet: "10.244.0.0/16"
-  serviceSubnet: "10.96.0.0/12"
+  podSubnet: "10.244.0.0/16"
+  # serviceSubnet: "10.96.0.0/12"
 tokenTTL: 0s
 nodeName: kube-master
 apiServerExtraArgs:
@@ -967,9 +968,9 @@ apiServerExtraArgs:
 				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n", -1),
 			)+
 			"systemctl start kubelet && "+
-			"kubeadm init --kubernetes-version=v1.9.3 --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks && "+
+			"kubeadm init --config /etc/kubeadm.conf --ignore-preflight-errors=all && "+
 			"mkdir /root/.kube && cp /etc/kubernetes/admin.conf /root/.kube/config && "+
-			// Make kube-dns faster; trick copied from dind-cluster-v1.9.sh (maybe, hopefully it didn't change from 1.7 -> 1.9)
+			// Make kube-dns faster; trick copied from dind-cluster-v1.7.sh
 			"kubectl get deployment kube-dns -n kube-system -o json | jq '.spec.template.spec.containers[0].readinessProbe.initialDelaySeconds = 3|.spec.template.spec.containers[0].readinessProbe.periodSeconds = 3' | kubectl apply --force -f -",
 		nil,
 	)
@@ -1003,7 +1004,7 @@ apiServerExtraArgs:
 		_, err = docker(nodeName(now, i, j), fmt.Sprintf(
 			"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
 				"systemctl start kubelet && "+
-				"kubeadm join --skip-preflight-checks %s",
+				"kubeadm join --ignore-preflight-errors=all %s",
 			joinArgs,
 		), nil)
 		if err != nil {
