@@ -279,7 +279,9 @@ func TeardownFinishedTestRuns() {
 		// We must use a buffered channel or risk missing the signal
 		// if we're not ready to receive when the signal is sent.
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGQUIT)
+		signal.Notify(c, syscall.SIGQUIT) /* test timeout in GitLab */
+		signal.Notify(c, syscall.SIGINT)  /* Ctrl+C */
+		signal.Notify(c, syscall.SIGTERM) /* kill */
 
 		// Block until a signal is received.
 		log.Printf("WAITING FOR THE SIGNAL")
@@ -873,17 +875,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		panic("no such thing as a zero-node cluster")
 	}
 
-	images, err := ioutil.ReadFile("../kubernetes/images.txt")
-	if err != nil {
-		return err
-	}
-	cache := map[string]string{}
-	for _, x := range strings.Split(string(images), "\n") {
-		ys := strings.Split(x, " ")
-		if len(ys) == 2 {
-			cache[ys[0]] = ys[1]
+	/*
+		images, err := ioutil.ReadFile("../kubernetes/images.txt")
+		if err != nil {
+			return err
 		}
-	}
+		cache := map[string]string{}
+		for _, x := range strings.Split(string(images), "\n") {
+			ys := strings.Split(x, " ")
+			if len(ys) == 2 {
+				cache[ys[0]] = ys[1]
+			}
+		}
+	*/
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -909,25 +913,25 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			if err != nil {
 				panic(st)
 			}
-			for fqImage, localName := range cache {
-				fmt.Printf("Pulling %s.local:80/%s\n", hostname, localName)
-				st, err := docker(
-					nodeName(now, i, j),
-					/*
-					   docker pull $local_name
-					   docker tag $local_name $fq_image
-					*/
-					fmt.Sprintf(
-						"docker pull %s.local:80/%s && "+
-							"docker tag %s.local:80/%s %s",
-						hostname, localName, hostname, localName, fqImage,
-					),
-					nil,
-				)
-				if err != nil {
-					panic(st)
+			/*
+				for fqImage, localName := range cache {
+					fmt.Printf("Pulling %s.local:80/%s\n", hostname, localName)
+					st, err := docker(
+						nodeName(now, i, j),
+						// docker pull $local_name
+						// docker tag $local_name $fq_image
+						fmt.Sprintf(
+							"docker pull %s.local:80/%s && "+
+								"docker tag %s.local:80/%s %s",
+							hostname, localName, hostname, localName, fqImage,
+						),
+						nil,
+					)
+					if err != nil {
+						panic(st)
+					}
 				}
-			}
+			*/
 			finishing <- true
 		}(j)
 	}
@@ -968,9 +972,9 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	if err != nil {
 		return err
 	}
-	// TODO: I am worried about pod network cidr collisions
-	// between concurrent test runs.
-	kubeadmConf := `
+	// TODO: I am worried about pod network cidr collisions between concurrent
+	// test runs. But maybe network namespaces make it OK?
+	/*kubeadmConf :*/ _ = `
 apiVersion: kubeadm.k8s.io/v1alpha1
 unifiedControlPlaneImage: mirantis/hypokube:final
 kind: MasterConfiguration
@@ -989,11 +993,11 @@ apiServerExtraArgs:
 	st, err := docker(
 		nodeName(now, i, 0),
 		"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
-			fmt.Sprintf(
+			/*fmt.Sprintf(
 				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n", -1),
-			)+
+			)*/"true && "+
 			"systemctl start kubelet && "+
-			"kubeadm init --config /etc/kubeadm.conf --ignore-preflight-errors=all && "+
+			"wrapkubeadm init --ignore-preflight-errors=all && "+
 			"mkdir /root/.kube && cp /etc/kubernetes/admin.conf /root/.kube/config && "+
 			// Make kube-dns faster; trick copied from dind-cluster-v1.7.sh
 			"kubectl get deployment kube-dns -n kube-system -o json | jq '.spec.template.spec.containers[0].readinessProbe.initialDelaySeconds = 3|.spec.template.spec.containers[0].readinessProbe.periodSeconds = 3' | kubectl apply --force -f -",
@@ -1029,7 +1033,7 @@ apiServerExtraArgs:
 		_, err = docker(nodeName(now, i, j), fmt.Sprintf(
 			"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
 				"systemctl start kubelet && "+
-				"kubeadm join --ignore-preflight-errors=all %s",
+				"wrapkubeadm join --ignore-preflight-errors=all %s",
 			joinArgs,
 		), nil)
 		if err != nil {
