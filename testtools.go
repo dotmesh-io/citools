@@ -21,18 +21,23 @@ import (
 )
 
 // props to https://github.com/kubernetes/kubernetes/issues/49387
-var KUBE_DEBUG_CMD = `(kubectl get pods --all-namespaces 2>/dev/null
-for INTERESTING_POD in $(kubectl get pods --all-namespaces -o json 2>/dev/null | jq -r '.items[] | select(.status.phase != "Running" or ([ .status.conditions[] | select(.type == "Ready" and .state == false) ] | length ) == 1 ) | .metadata.name + "/" + .metadata.namespace + "/" + .status.phase'); do
-   NAME=$(echo $INTERESTING_POD |cut -d "/" -f 1)
-   NS=$(echo $INTERESTING_POD |cut -d "/" -f 2)
-   PHASE=$(echo $INTERESTING_POD |cut -d "/" -f 3)
-   echo "--> status of $INTERESTING_POD"
-   kubectl describe pod $NAME -n $NS
-   if [ "$PHASE" != "ContainerCreating" ]; then
-	   echo "--> logs of $INTERESTING_POD"
-	   kubectl logs --tail 10 $NAME -n $NS
-   fi
+var KUBE_DEBUG_CMD = `(
+for INTERESTING_POD in $(kubectl get pods --all-namespaces --no-headers \
+		|grep -v Running | tr -s ' ' |cut -d ' ' -f 1,2,4 |tr ' ' '/'); do
+	NS=$(echo $INTERESTING_POD |cut -d "/" -f 1)
+	NAME=$(echo $INTERESTING_POD |cut -d "/" -f 2)
+	PHASE=$(echo $INTERESTING_POD |cut -d "/" -f 3)
+	echo "--> status of $INTERESTING_POD"
+	kubectl describe pod $NAME -n $NS
+	if [ "$PHASE" != "ContainerCreating" ]; then
+		for CONTAINER in $(kubectl get pods $NAME -n $NS -o \
+				jsonpath={.spec.containers[*].name}); do
+			echo "--> logs of $INTERESTING_POD/$CONTAINER"
+			kubectl logs --tail 10 $NAME -n $NS $CONTAINER
+		done
+	fi
 done
+kubectl get pods --all-namespaces
 exit 0)` // never let the debug command failing cause us to fail the tests!
 
 var timings map[string]float64
@@ -143,16 +148,18 @@ func testSetup(t *testing.T, f Federation, stamp int64) error {
 		return err
 	}
 
+	dindClusterScriptName := fmt.Sprintf("./dind-cluster-%d.sh", os.Getpid())
+
 	// we write the dind-script.sh file out from go because we need to distribute
 	// that .sh script as a go package using dep
-	err = ioutil.WriteFile("./dind-cluster-v1.7.sh", []byte(DIND_SCRIPT), 0755)
+	err = ioutil.WriteFile(dindClusterScriptName, []byte(DIND_SCRIPT), 0755)
 	if err != nil {
 		return err
 	}
 
 	// don't leave copies of the script around once we have used it
 	defer func() {
-		os.Remove("./dind-cluster-v1.7.sh")
+		os.Remove(dindClusterScriptName)
 	}()
 
 	for i, c := range f {
@@ -183,13 +190,15 @@ func testSetup(t *testing.T, f Federation, stamp int64) error {
 				mount --make-shared $MOUNTPOINT;
 			fi
 			EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
-			DIND_IMAGE="quay.io/lukemarsden/kubeadm-dind-cluster:v1.7-hostport" \
 			CNI_PLUGIN=weave \
-				./dind-cluster-v1.7.sh bare $NODE %s
+				%s bare $NODE %s
 			sleep 1
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
 				set -xe
+				# from dind::fix-mounts
+				mount --make-shared /lib/modules/
+				mount --make-shared /run
 			    echo "%s '$(hostname)'.local" >> /etc/hosts
 				sed -i "s/rundocker/rundocker \
 					--insecure-registry '$(hostname)'.local:80/" \
@@ -213,7 +222,7 @@ func testSetup(t *testing.T, f Federation, stamp int64) error {
 					systemctl restart docker
 				'
 			fi
-			`, node, mountDockerAuth, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER))
+			`, node, mountDockerAuth, dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER, HOST_IP_FROM_CONTAINER))
 			if err != nil {
 				return err
 			}
@@ -279,6 +288,9 @@ func TeardownFinishedTestRuns() {
 		// if we're not ready to receive when the signal is sent.
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGQUIT)
+		signal.Notify(c, syscall.SIGINT)
+		signal.Notify(c, syscall.SIGTERM)
+		signal.Notify(c, syscall.SIGPIPE)
 
 		// Block until a signal is received.
 		log.Printf("WAITING FOR THE SIGNAL")
@@ -869,17 +881,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		panic("no such thing as a zero-node cluster")
 	}
 
-	images, err := ioutil.ReadFile("../kubernetes/images.txt")
-	if err != nil {
-		return err
-	}
-	cache := map[string]string{}
-	for _, x := range strings.Split(string(images), "\n") {
-		ys := strings.Split(x, " ")
-		if len(ys) == 2 {
-			cache[ys[0]] = ys[1]
+	/*
+		images, err := ioutil.ReadFile("../kubernetes/images.txt")
+		if err != nil {
+			return err
 		}
-	}
+		cache := map[string]string{}
+		for _, x := range strings.Split(string(images), "\n") {
+			ys := strings.Split(x, " ")
+			if len(ys) == 2 {
+				cache[ys[0]] = ys[1]
+			}
+		}
+	*/
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -905,24 +919,25 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			if err != nil {
 				panic(st)
 			}
-			for fqImage, localName := range cache {
-				st, err := docker(
-					nodeName(now, i, j),
-					/*
-					   docker pull $local_name
-					   docker tag $local_name $fq_image
-					*/
-					fmt.Sprintf(
-						"docker pull %s.local:80/%s && "+
-							"docker tag %s.local:80/%s %s",
-						hostname, localName, hostname, localName, fqImage,
-					),
-					nil,
-				)
-				if err != nil {
-					panic(st)
+			/*
+				for fqImage, localName := range cache {
+					fmt.Printf("Pulling %s.local:80/%s\n", hostname, localName)
+					st, err := docker(
+						nodeName(now, i, j),
+						// docker pull $local_name
+						// docker tag $local_name $fq_image
+						fmt.Sprintf(
+							"docker pull %s.local:80/%s && "+
+								"docker tag %s.local:80/%s %s",
+							hostname, localName, hostname, localName, fqImage,
+						),
+						nil,
+					)
+					if err != nil {
+						panic(st)
+					}
 				}
-			}
+			*/
 			finishing <- true
 		}(j)
 	}
@@ -964,11 +979,32 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	if err != nil {
 		return err
 	}
+	// TODO: I am worried about pod network cidr collisions between concurrent
+	// test runs. But maybe network namespaces make it OK?
+	/*kubeadmConf :*/ _ = `
+apiVersion: kubeadm.k8s.io/v1alpha1
+unifiedControlPlaneImage: mirantis/hypokube:final
+kind: MasterConfiguration
+kubernetesVersion: 1.9.3
+#api:
+#  advertiseAddress: "10.192.0.2"
+networking:
+  podSubnet: "10.244.0.0/16"
+  # serviceSubnet: "10.96.0.0/12"
+tokenTTL: 0s
+nodeName: kube-master
+apiServerExtraArgs:
+  insecure-bind-address: "0.0.0.0"
+  insecure-port: "8080"
+`
 	st, err := docker(
 		nodeName(now, i, 0),
-		"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
+		"touch /dind/flexvolume_driver && "+
+			/*fmt.Sprintf(
+				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n", -1),
+			)*/"true && "+
 			"systemctl start kubelet && "+
-			"kubeadm init --kubernetes-version=v1.7.6 --pod-network-cidr=10.244.0.0/16 --skip-preflight-checks && "+
+			"wrapkubeadm init --ignore-preflight-errors=all && "+
 			"mkdir /root/.kube && cp /etc/kubernetes/admin.conf /root/.kube/config && "+
 			// Make kube-dns faster; trick copied from dind-cluster-v1.7.sh
 			"kubectl get deployment kube-dns -n kube-system -o json | jq '.spec.template.spec.containers[0].readinessProbe.initialDelaySeconds = 3|.spec.template.spec.containers[0].readinessProbe.periodSeconds = 3' | kubectl apply --force -f -",
@@ -1002,9 +1038,9 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		// if c.Nodes is 3, this iterates over 1 and 2 (0 was the init'd
 		// node).
 		_, err = docker(nodeName(now, i, j), fmt.Sprintf(
-			"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
+			"touch /dind/flexvolume_driver && "+
 				"systemctl start kubelet && "+
-				"kubeadm join --skip-preflight-checks %s",
+				"wrapkubeadm join --ignore-preflight-errors=all %s",
 			joinArgs,
 		), nil)
 		if err != nil {
