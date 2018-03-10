@@ -21,18 +21,23 @@ import (
 )
 
 // props to https://github.com/kubernetes/kubernetes/issues/49387
-var KUBE_DEBUG_CMD = `(kubectl get pods --all-namespaces 2>/dev/null
-for INTERESTING_POD in $(kubectl get pods --all-namespaces -o json 2>/dev/null | jq -r '.items[] | select(.status.phase != "Running" or ([ .status.conditions[] | select(.type == "Ready" and .state == false) ] | length ) == 1 ) | .metadata.name + "/" + .metadata.namespace + "/" + .status.phase'); do
-   NAME=$(echo $INTERESTING_POD |cut -d "/" -f 1)
-   NS=$(echo $INTERESTING_POD |cut -d "/" -f 2)
-   PHASE=$(echo $INTERESTING_POD |cut -d "/" -f 3)
-   echo "--> status of $INTERESTING_POD"
-   kubectl describe pod $NAME -n $NS
-   if [ "$PHASE" != "ContainerCreating" ]; then
-	   echo "--> logs of $INTERESTING_POD"
-	   kubectl logs --tail 10 $NAME -n $NS
-   fi
+var KUBE_DEBUG_CMD = `(
+for INTERESTING_POD in $(kubectl get pods --all-namespaces --no-headers \
+		|grep -v Running | tr -s ' ' |cut -d ' ' -f 1,2,4 |tr ' ' '/'); do
+	NS=$(echo $INTERESTING_POD |cut -d "/" -f 1)
+	NAME=$(echo $INTERESTING_POD |cut -d "/" -f 2)
+	PHASE=$(echo $INTERESTING_POD |cut -d "/" -f 3)
+	echo "--> status of $INTERESTING_POD"
+	kubectl describe pod $NAME -n $NS
+	if [ "$PHASE" != "ContainerCreating" ]; then
+		for CONTAINER in $(kubectl get pods $NAME -n $NS -o \
+				jsonpath={.spec.containers[*].name}); do
+			echo "--> logs of $INTERESTING_POD/$CONTAINER"
+			kubectl logs --tail 10 $NAME -n $NS $CONTAINER
+		done
+	fi
 done
+kubectl get pods --all-namespaces
 exit 0)` // never let the debug command failing cause us to fail the tests!
 
 var timings map[string]float64
@@ -191,6 +196,9 @@ func testSetup(t *testing.T, f Federation, stamp int64) error {
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
 				set -xe
+				# from dind::fix-mounts
+				mount --make-shared /lib/modules/
+				mount --make-shared /run
 			    echo "%s '$(hostname)'.local" >> /etc/hosts
 				sed -i "s/rundocker/rundocker \
 					--insecure-registry '$(hostname)'.local:80/" \
@@ -279,9 +287,10 @@ func TeardownFinishedTestRuns() {
 		// We must use a buffered channel or risk missing the signal
 		// if we're not ready to receive when the signal is sent.
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGQUIT) /* test timeout in GitLab */
-		signal.Notify(c, syscall.SIGINT)  /* Ctrl+C */
-		signal.Notify(c, syscall.SIGTERM) /* kill */
+		signal.Notify(c, syscall.SIGQUIT)
+		signal.Notify(c, syscall.SIGINT)
+		signal.Notify(c, syscall.SIGTERM)
+		signal.Notify(c, syscall.SIGPIPE)
 
 		// Block until a signal is received.
 		log.Printf("WAITING FOR THE SIGNAL")
@@ -992,7 +1001,7 @@ apiServerExtraArgs:
 `
 	st, err := docker(
 		nodeName(now, i, 0),
-		"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
+		"touch /dind/flexvolume_driver && "+
 			/*fmt.Sprintf(
 				"printf '%s' > /etc/kubeadm.conf && ", strings.Replace(kubeadmConf, "\n", "\\n", -1),
 			)*/"true && "+
@@ -1031,7 +1040,7 @@ apiServerExtraArgs:
 		// if c.Nodes is 3, this iterates over 1 and 2 (0 was the init'd
 		// node).
 		_, err = docker(nodeName(now, i, j), fmt.Sprintf(
-			"rm /etc/machine-id && systemd-machine-id-setup && touch /dind/flexvolume_driver && "+
+			"touch /dind/flexvolume_driver && "+
 				"systemctl start kubelet && "+
 				"wrapkubeadm join --ignore-preflight-errors=all %s",
 			joinArgs,
