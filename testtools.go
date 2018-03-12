@@ -511,6 +511,10 @@ func docker(node string, cmd string, env map[string]string) (string, error) {
 
 }
 
+func RunOnNodeErr(node string, cmd string) (string, error) {
+	return docker(node, cmd, nil)
+}
+
 func dockerSystem(node string, cmd string) error {
 	return System("docker", "exec", "-i", node, "sh", "-c", cmd)
 }
