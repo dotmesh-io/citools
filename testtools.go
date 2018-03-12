@@ -1127,7 +1127,17 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	for j := 0; j < c.DesiredNodeCount; j++ {
 		nodeName := nodeName(now, i, j)
 		err := TryUntilSucceeds(func() error {
+			// Check that the dm API works
 			_, err := RunOnNodeErr(nodeName, "dm list")
+			if err != nil {
+				return err
+			}
+
+			// Check that the docker volume plugin socket works
+			_, err := RunOnNodeErr(
+				nodeName,
+				"echo 'GET / HTTP/1.0' | socat /run/docker/plugins/dm.sock -",
+			)
 			return err
 		}, fmt.Sprintf("running dm list on %s", nodeName))
 		if err != nil {
