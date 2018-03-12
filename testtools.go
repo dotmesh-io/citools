@@ -1122,6 +1122,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		}
 	}
 
+	// For each node, wait until we can talk to dm from that node before
+	// proceeding.
+	for j := 0; j < c.DesiredNodeCount; j++ {
+		nodeName := nodeName(now, i, j)
+		err := TryUntilSucceeds(func() error {
+			_, err := RunOnNodeErr(nodeName, "dm list")
+			return err
+		}, fmt.Sprintf("running dm list on %s", nodeName))
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
