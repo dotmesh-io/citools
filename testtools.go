@@ -1178,7 +1178,12 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				/usr/libexec/kubernetes/kubelet-plugins/volume/exec/dotmesh.io~dind
 			docker cp ../cmd/dotmesh-server/target/dind-flexvolume \
 				$NODE:/usr/libexec/kubernetes/kubelet-plugins/volume/exec/dotmesh.io~dind/dind
+			docker exec -i $NODE systemctl restart kubelet
 			`,
+			// Restarting the kubelet (line above) shouldn't be
+			// necessary, but in this case for some reason it seems to be
+			// necessary to make the flexvolume plugin be seen on all
+			// nodes :-(
 			nodeName,
 		)
 		err = System("bash", "-c", getFlexCommand)
