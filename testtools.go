@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/rpc/v2/json2"
+	"github.com/dotmesh-io/rpc/v2/json2"
 )
 
 // props to https://github.com/kubernetes/kubernetes/issues/49387
