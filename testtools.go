@@ -1057,10 +1057,14 @@ func RestartOperator(t *testing.T, masterNode string) {
 		running := len(podsExceptOld) - 1
 		if running == 1 {
 			break
+		}
+
+		if tries == 9 {
+			t.Error("Couldn't seem to get back to a single operator pod running after restart :-(")
 		} else {
 			fmt.Printf("%d operator pods running: %#v\n", running, podsExceptOld)
+			time.Sleep(5 * time.Second)
 		}
-		time.Sleep(5 * time.Second)
 	}
 }
 
