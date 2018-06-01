@@ -197,7 +197,16 @@ func testSetup(t *testing.T, f Federation, stamp int64) error {
 		return err
 	}
 
-	dindClusterScriptName := fmt.Sprintf("./dind-cluster-%d.sh", os.Getpid())
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	dindClusterScriptName := fmt.Sprintf("%s/dind-cluster-%d.sh", cwd, os.Getpid())
+
+	runScriptDir := os.Getenv("DIND_RUN_FROM_PATH")
+	if runScriptDir == "" {
+		runScriptDir = cwd
+	}
 
 	// we write the dind-script.sh file out from go because we need to distribute
 	// that .sh script as a go package using dep
@@ -270,7 +279,7 @@ CNI_PLUGIN="${CNI_PLUGIN:-bridge}"
 # possible values are kube-dns (default) and coredns
 DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 `
-	err = ioutil.WriteFile("./config.sh", []byte(dindConfig), 0644)
+	err = ioutil.WriteFile(fmt.Sprintf("%s/config.sh", runScriptDir), []byte(dindConfig), 0644)
 	if err != nil {
 		return err
 	}
@@ -309,9 +318,9 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 				mount --bind $MOUNTPOINT $MOUNTPOINT && \
 				mount --make-shared $MOUNTPOINT;
 			fi
-			EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
-			CNI_PLUGIN=weave \
-				%s bare $NODE %s
+			(cd %s
+				EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
+				CNI_PLUGIN=weave %s bare $NODE %s)
 			sleep 1
 			echo "About to run docker exec on $NODE"
 			docker exec -t $NODE bash -c '
@@ -342,7 +351,7 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 					systemctl restart docker
 				'
 			fi
-			`, node, mountDockerAuth, dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER, HOST_IP_FROM_CONTAINER))
+			`, node, runScriptDir, mountDockerAuth, dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER, HOST_IP_FROM_CONTAINER))
 			if err != nil {
 				return err
 			}
