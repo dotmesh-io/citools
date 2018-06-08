@@ -648,9 +648,15 @@ func docker(node string, cmd string, env map[string]string) (string, error) {
 	c := exec.Command("docker", "exec", "-i", node, "bash", "-c", envString+cmd)
 
 	var b bytes.Buffer
+	var o, e io.Writer
+	if _, ok := env["DEBUG_MODE"]; ok {
+		o = io.MultiWriter(&b, os.Stdout)
+		e = io.MultiWriter(&b, os.Stderr)
 
-	o := io.MultiWriter(&b, os.Stdout)
-	e := io.MultiWriter(&b, os.Stderr)
+	} else {
+		o = io.MultiWriter(&b)
+		e = io.MultiWriter(&b)
+	}
 
 	c.Stdout = o
 	c.Stderr = e
