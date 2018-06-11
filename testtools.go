@@ -874,7 +874,6 @@ type Kubernetes struct {
 type Pair struct {
 	From       Node
 	To         Node
-	Port       int
 	RemoteName string
 }
 
@@ -1015,14 +1014,12 @@ SEARCHABLE HEADER: STARTING CLUSTER
 				pairs = append(pairs, Pair{
 					From:       node,
 					To:         first,
-					Port:       first.Port,
 					RemoteName: first.ClusterName,
 				})
 				for i, oNode := range otherCluster.GetNodes() {
 					pairs = append(pairs, Pair{
 						From:       node,
 						To:         oNode,
-						Port:       oNode.Port,
 						RemoteName: fmt.Sprintf("%s_node_%d", first.ClusterName, i),
 					})
 				}
@@ -1046,8 +1043,8 @@ SEARCHABLE HEADER: STARTING CLUSTER
 							"echo %s |dm remote add %s admin@%s:%i",
 							pair.To.ApiKey,
 							pair.RemoteName,
-							pair.Port,
 							pair.To.IP,
+							pair.To.Port,
 						),
 						nil,
 					)
