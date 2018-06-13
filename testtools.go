@@ -892,7 +892,7 @@ func NewClusterWithEnv(desiredNodeCount int, env map[string]string) *Cluster {
 }
 
 // custom arguments that are passed through to `dm cluster {init,join}`
-func NewClusterWithArgs(desiredNodeCount int, port int, env map[string]string, args string) *Cluster {
+func NewClusterWithArgs(desiredNodeCount, port int, env map[string]string, args string) *Cluster {
 	env["DOTMESH_UPGRADES_URL"] = "" //set default test env vars
 	return &Cluster{DesiredNodeCount: desiredNodeCount, Port: port, Env: env, ClusterArgs: args}
 }
@@ -1037,7 +1037,7 @@ SEARCHABLE HEADER: STARTING CLUSTER
 		if !found {
 			err := TryUntilSucceeds(
 				func() error {
-					_, err := docker(
+					output, err := docker(
 						pair.From.Container,
 						fmt.Sprintf(
 							"echo %s |dm remote add %s admin@%s:%i",
@@ -1048,6 +1048,7 @@ SEARCHABLE HEADER: STARTING CLUSTER
 						),
 						nil,
 					)
+					fmt.Printf(output)
 					return err
 				},
 				fmt.Sprintf("adding remote to %s", pair.From.Container),
