@@ -1040,7 +1040,7 @@ SEARCHABLE HEADER: STARTING CLUSTER
 					output, err := docker(
 						pair.From.Container,
 						fmt.Sprintf(
-							"echo %s |dm remote add %s admin@%s:%i",
+							"echo %s |dm remote add %s admin@%s:%d",
 							pair.To.ApiKey,
 							pair.RemoteName,
 							pair.To.IP,
