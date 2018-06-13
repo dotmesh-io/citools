@@ -1037,7 +1037,7 @@ SEARCHABLE HEADER: STARTING CLUSTER
 		if !found {
 			err := TryUntilSucceeds(
 				func() error {
-					output, err := docker(
+					_, err := docker(
 						pair.From.Container,
 						fmt.Sprintf(
 							"echo %s |dm remote add %s admin@%s:%d",
@@ -1048,7 +1048,6 @@ SEARCHABLE HEADER: STARTING CLUSTER
 						),
 						nil,
 					)
-					fmt.Printf(output)
 					return err
 				},
 				fmt.Sprintf("adding remote to %s", pair.From.Container),
