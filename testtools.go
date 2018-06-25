@@ -62,6 +62,34 @@ exit 0)` // never let the debug command failing cause us to fail the tests!
 var timings map[string]float64
 var lastTiming int64
 
+// DOTMESH_TEST_CLEANUP_ENV - cleanup policy for the tests
+var DOTMESH_TEST_CLEANUP_ENV = "DOTMESH_TEST_CLEANUP"
+
+type cleanupStrategy int
+
+const (
+	cleanupStrategyNone cleanupStrategy = iota
+	cleanupStrategyAlways
+	cleanupStrategyNever
+	cleanupStrategyOnSuccess
+)
+
+var defaultCleanupStrategy = cleanupStrategyOnSuccess
+
+func getCleanupStrategy() cleanupStrategy {
+	c := strings.ToLower(os.Getenv(DOTMESH_TEST_CLEANUP_ENV))
+	switch c {
+	case "always":
+		return cleanupStrategyAlways
+	case "never":
+		return cleanupStrategyNever
+	case "onsuccess":
+		return cleanupStrategyOnSuccess
+	}
+
+	return defaultCleanupStrategy
+}
+
 const HOST_IP_FROM_CONTAINER = "10.192.0.1"
 
 var getFieldsByNewLine = func(c rune) bool {
@@ -551,13 +579,13 @@ func TeardownFinishedTestRuns() {
 				}
 				err = System("docker", "rm", "-f", "-v", node)
 				if err != nil {
-					fmt.Printf("erk during teardown %s\n", err)
+					fmt.Printf("err during teardown %s\n", err)
 				}
 
 				// workaround https://github.com/docker/docker/issues/20398
 				err = System("docker", "network", "disconnect", "-f", "bridge", node)
 				if err != nil {
-					fmt.Printf("erk during network force-disconnect %s\n", err)
+					fmt.Printf("err during network force-disconnect %s\n", err)
 				}
 
 				// cleanup after a previous test run; this is a pretty gross hack
@@ -627,6 +655,18 @@ func TeardownFinishedTestRuns() {
 					fmt.Printf("err cleaning up test pools dirs: %s\n", err)
 				}
 			}
+
+			// removing root testing directory
+			switch getCleanupStrategy() {
+			case cleanupStrategyNever, cleanupStrategyNone:
+				// nothing to do
+			case cleanupStrategyAlways, cleanupStrategyOnSuccess:
+				err = System("bash", "-c", fmt.Sprintf(`rm -rf %s`, testDirName(stamp)))
+				if err != nil {
+					fmt.Printf("err cleaning up test pools dirs: %s\n", err)
+				}
+			}
+
 		}()
 		out, err := exec.Command("docker", "volume", "prune", "-f").Output()
 		if err != nil {
