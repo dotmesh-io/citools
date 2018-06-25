@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -188,17 +189,17 @@ func TestMarkForCleanup(f Federation) {
 }
 
 func testSetup(t *testing.T, f Federation, stamp int64) error {
-	err := System("bash", "-c", `
+	err := System("bash", "-c", fmt.Sprintf(`
 		# Create a home for the test pools to live that can have the same path
 		# both from ZFS's perspective and that of the inner container.
 		# (Bind-mounts all the way down.)
-		mkdir -p /dotmesh-test-pools
+		mkdir -p %s
 		# tmpfs makes etcd not completely rinse your IOPS (which it can do
 		# otherwise); create if doesn't exist
 		if [ $(mount |grep "/tmpfs " |wc -l) -eq 0 ]; then
 		        mkdir -p /tmpfs && mount -t tmpfs -o size=4g tmpfs /tmpfs
 		fi
-	`)
+	`, testDirName(stamp)))
 	if err != nil {
 		return err
 	}
@@ -621,7 +622,7 @@ func TeardownFinishedTestRuns() {
 					fmt.Printf("err during cleanup mounts: %s\n", err)
 				}
 				// cleanup zpool data directories
-				err = System("bash", "-c", fmt.Sprintf(`rm -rf /dotmesh-test-pools/testpool-%s*`, nodeSuffix))
+				err = System("bash", "-c", fmt.Sprintf(`rm -rf %s/testpool-%s*`, testDirName(stamp), nodeSuffix))
 				if err != nil {
 					fmt.Printf("err cleaning up test pools dirs: %s\n", err)
 				}
@@ -908,6 +909,11 @@ type Federation []Startable
 
 func nodeName(now int64, i, j int) string {
 	return fmt.Sprintf("cluster-%d-%d-node-%d", now, i, j)
+}
+
+// testDirName
+func testDirName(now int64) string {
+	return fmt.Sprintf("/dotmesh-test-pools/%d", now)
 }
 
 func NodeName(now int64, i, j int) string {
@@ -1221,18 +1227,18 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		logAddr = HOST_IP_FROM_CONTAINER
 	}
 
-	// Move k8s root dir into /dotmesh-test-pools on every node.
+	// Move k8s root dir into /dotmesh-test-pools/<timestamp>/ on every node.
 
 	// This is required for the tests of k8s using PV storage with the
 	// DIND provisioner to work; the container mountpoints must be
 	// consistent between the actual host and the dind kubelet node, or
 	// ZFS will barf on them. Putting the k8s root dir in
-	// /dotmesh-test-pools means the paths are consistent across all
+	// /dotmesh-test-pools/<timestamp> means the paths are consistent across all
 	// containers, as we keep the same filesystem mounted there
 	// throughout.
 	for j := 0; j < c.DesiredNodeCount; j++ {
 		node := nodeName(now, i, j)
-		path := fmt.Sprintf("/dotmesh-test-pools/k8s-%s", node)
+		path := fmt.Sprintf("%s/k8s-%s", testDirName(now), node)
 		AddFuncToCleanups(func() {
 			System("rm", "-rf", path)
 		})
@@ -1384,12 +1390,13 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			"kubectl create configmap -n dotmesh configuration "+
 				"--from-literal=upgradesUrl= "+
 				"'--from-literal=poolNamePrefix=%s-#HOSTNAME#-' "+
-				"'--from-literal=local.poolLocation=/dotmesh-test-pools/%s-#HOSTNAME#' "+
+				"'--from-literal=local.poolLocation=%s/%s-#HOSTNAME#' "+
 				"--from-literal=logAddress=%s "+
 				"--from-literal=storageMode=%s "+
 				"--from-literal=pvcPerNode.storageClass=dind-pv "+
 				"--from-literal=nodeSelector=clusterSize-%d=yes", // This needs to be in here so it can be replaced with sed
 			poolId(now, i, 0),
+			testDirName(now),
 			poolId(now, i, 0),
 			logAddr,
 			c.StorageMode,
@@ -1613,7 +1620,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 	}
 
 	dmInitCommand := "EXTRA_HOST_COMMANDS='echo Testing EXTRA_HOST_COMMANDS' dm cluster init " + localImageArgs() +
-		" --use-pool-dir /dotmesh-test-pools/" + poolId(now, i, 0) +
+		" --use-pool-dir " + testDirName(now) + "/" + poolId(now, i, 0) +
 		" --use-pool-name " + poolId(now, i, 0) +
 		" --dotmesh-upgrades-url ''" +
 		" --port " + strconv.Itoa(c.Port) +
@@ -1655,7 +1662,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		// node).
 		_, err = docker(nodeName(now, i, j), fmt.Sprintf(
 			"dm cluster join %s %s %s",
-			localImageArgs()+" --use-pool-dir /dotmesh-test-pools/"+poolId(now, i, j),
+			localImageArgs()+" --use-pool-dir "+filepath.Join(testDirName(now), poolId(now, i, j)),
 			joinUrl,
 			" --use-pool-name "+poolId(now, i, j)+c.ClusterArgs,
 		), env)
