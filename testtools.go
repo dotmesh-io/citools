@@ -440,6 +440,30 @@ type N struct {
 	NodeNum    string
 }
 
+// InitialCleanup is called before starting tests
+func InitialCleanup() {
+	// currently we only remove previous tests
+	TeardownFinishedTestRuns()
+}
+
+// FinalCleanup is called after running all the tests
+func FinalCleanup(retcode int) {
+	// final cleanup is done based on cleanup strategy. For CI runs
+	// it should be set to 'always'
+	switch getCleanupStrategy() {
+	case cleanupStrategyAlways:
+		TeardownFinishedTestRuns()
+	case cleanupStrategyOnSuccess:
+		if retcode == 0 {
+			TeardownFinishedTestRuns()
+		} else {
+			fmt.Printf("[Final Cleanup] skipping cleanup as tests didn't pass, return code: %d", retcode)
+		}
+	case cleanupStrategyNever, cleanupStrategyNone:
+		// nothing to do
+	}
+}
+
 func TeardownFinishedTestRuns() {
 
 	// Handle SIGQUIT and mark tests for cleanup in that case, then immediately
@@ -458,7 +482,7 @@ func TeardownFinishedTestRuns() {
 
 		// Block until a signal is received.
 		s := <-c
-		log.Printf("Got signal:", s)
+		log.Printf("Got signal: %s", s)
 		for _, f := range globalCleanupFuncs {
 			f()
 		}
@@ -550,13 +574,13 @@ func TeardownFinishedTestRuns() {
 			for _, n := range ns {
 				cn, err := strconv.Atoi(n.ClusterNum)
 				if err != nil {
-					fmt.Printf("can't deduce clusterNum: %s", cn)
+					fmt.Printf("can't deduce clusterNum: %d \n", cn)
 					return
 				}
 
 				nn, err := strconv.Atoi(n.NodeNum)
 				if err != nil {
-					fmt.Printf("can't deduce nodeNum: %s", nn)
+					fmt.Printf("can't deduce nodeNum: %d \n", nn)
 					return
 				}
 
@@ -648,11 +672,6 @@ func TeardownFinishedTestRuns() {
 				)
 				if err != nil {
 					fmt.Printf("err during cleanup mounts: %s\n", err)
-				}
-				// cleanup zpool data directories
-				err = System("bash", "-c", fmt.Sprintf(`rm -rf %s/testpool-%s*`, testDirName(stamp), nodeSuffix))
-				if err != nil {
-					fmt.Printf("err cleaning up test pools dirs: %s\n", err)
 				}
 			}
 
