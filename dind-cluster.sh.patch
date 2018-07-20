@@ -1,6 +1,6 @@
---- dind-cluster-original.sh	2018-07-19 14:25:01.404600694 +0000
-+++ dind-cluster-patched.sh	2018-07-19 14:28:17.306654089 +0000
-@@ -254,9 +254,9 @@
+--- dind-cluster-original.sh	2018-07-20 09:54:37.370416165 +0000
++++ dind-cluster-patched.sh	2018-07-20 10:27:10.553216533 +0000
+@@ -261,9 +261,9 @@
  function dind::prepare-sys-mounts {
    if [[ ! ${using_linuxkit} ]]; then
      sys_volume_args=()
@@ -13,7 +13,7 @@
      if [[ -d /lib/modules ]]; then
        sys_volume_args+=(-v /lib/modules:/lib/modules)
      fi
-@@ -648,7 +648,7 @@
+@@ -657,7 +657,7 @@
    dind::step "Starting DIND container:" "${container_name}"
  
    if [[ ! ${using_linuxkit} ]]; then
@@ -21,16 +21,16 @@
 +    opts+=(-v /lib/modules:/lib/modules)
    fi
  
-   volume_name="kubeadm-dind-${container_name}"
-@@ -671,6 +671,7 @@
+   local volume_name="kubeadm-dind-${container_name}"
+@@ -680,6 +680,7 @@
           --hostname "${container_name}" \
-          -l mirantis.kubeadm_dind_cluster \
-          -v ${volume_name}:/dind \
-+	 ${EXTRA_DOCKER_ARGS:-} \
+          -l "${DIND_LABEL}" \
+          -v "${volume_name}:/dind" \
++         ${EXTRA_DOCKER_ARGS:-} \
           ${opts[@]+"${opts[@]}"} \
           "${DIND_IMAGE}" \
           ${args[@]+"${args[@]}"}
-@@ -691,16 +692,16 @@
+@@ -700,16 +701,16 @@
    return ${status}
  }
  
@@ -57,7 +57,7 @@
  
  function dind::configure-kubectl {
    dind::step "Setting cluster config"
-@@ -1547,10 +1548,10 @@
+@@ -1614,10 +1615,10 @@
      dind::ensure-kubectl
      dind::join "$(dind::create-node-container)" "$@"
      ;;
