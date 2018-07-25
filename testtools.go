@@ -886,9 +886,9 @@ func OutputFromRunOnNode(t *testing.T, node string, cmd string) string {
 
 func LocalImage(service string) string {
 	var registry string
-	// expected format: quay.io/dotmesh for example
+	// See .gitlab-ci.yml in the dotmesh repo for where these are set up
 	if reg := os.Getenv("CI_DOCKER_REGISTRY"); reg != "" {
-		registry = reg
+		registry = reg + "/" + os.Getenv("CI_REPOSITORY")
 	} else {
 		hostname, err := os.Hostname()
 		if err != nil {
