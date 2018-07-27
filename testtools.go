@@ -351,7 +351,8 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 			}
 
 			// XXX the following only works if overlay is working
-			err = System("bash", "-c", fmt.Sprintf(`
+			err = TryUntilSucceeds(
+				System("bash", "-c", fmt.Sprintf(`
 			set -xe
 			mkdir -p /dotmesh-test-pools
 			MOUNTPOINT=/dotmesh-test-pools
@@ -394,8 +395,11 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 				'
 			fi
 			`, node, runScriptDir, mountDockerAuth,
-				dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER,
-				hostname, HOST_IP_FROM_CONTAINER, hostname))
+					dindClusterScriptName, c.RunArgs(i, j), HOST_IP_FROM_CONTAINER,
+					hostname, HOST_IP_FROM_CONTAINER, hostname),
+				),
+				fmt.Sprintf("starting container %s", node),
+			)
 			if err != nil {
 				return err
 			}
