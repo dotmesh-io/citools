@@ -49,6 +49,24 @@ for INTERESTING_POD in $(kubectl get pods --all-namespaces --no-headers \
 			kubectl logs --tail 10 $NAME -n $NS $CONTAINER
 		done
 	fi
+
+	if [ "$PHASE" == "ImagePullBackOff" ]; then
+		echo "QUITTING, image could not be found for pod ${INTERESTING_POD}"
+		echo "IMAGEPULLBACKOFF Describe output -->"
+		kubectl describe $INTERESTING_POD -n $NS
+		exit 1
+	fi
+
+	if [ "$PHASE" == "CrashLoopBackOff" ]; then
+		echo "WARNING crashlooping."
+	fi
+
+	if [ "$PHASE" == "CreateContainerConfigError" ]; then
+		echo "QUITTING, Create Container config error for pod ${INTERESTING_POD}"
+		echo "CREATECONTAINERCONFIGERROR Describe output -->"
+		kubectl describe $INTERESTING_POD -n $NS
+		exit 1
+	fi
 done
 kubectl get pods --all-namespaces
 echo '    ___  ___   _ ____  _____   ____  _____ ____  _   _  ____ '
@@ -1736,6 +1754,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				)
 				if debugErr != nil {
 					log.Printf("Error debugging kubctl status:  %v, %s", debugErr, st)
+					return debugErr
 				}
 				if c.DindStorage {
 					// Is the DIND provisioner not working?
