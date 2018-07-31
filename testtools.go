@@ -1747,6 +1747,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			)
 
 			if err != nil {
+				if dotmeshIteration > 20 {
+					log.Printf("Gave up adding remotes after %d retries, giving up: %v\n", dotmeshIteration, err)
+					return err
+				}
+
 				time.Sleep(time.Second * 2)
 				st, debugErr := docker(
 					nodeName(now, i, 0),
@@ -1796,6 +1801,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			fmt.Printf("etcd is up!\n")
 			break
 		}
+		if etcdIteration > 20 {
+			log.Printf("Gave up waiting for etcd after %d retries, giving up.\n", etcdIteration)
+			return fmt.Errorf("Gave up waiting for etcd cluster to be ready after %d retries", etcdIteration)
+		}
+
 		fmt.Printf("etcd is not up... %#v\n", resp)
 		time.Sleep(time.Second * 2)
 		st, err = docker(
