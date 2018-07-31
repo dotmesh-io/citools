@@ -1738,7 +1738,8 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	// Add the nodes at the end, because NodeFromNodeName expects dotmesh
 	// config to be set up.
 	for j := 0; j < c.DesiredNodeCount; j++ {
-		for {
+		dotmeshIteration := 0
+		for ; ; dotmeshIteration++ {
 			st, err = docker(
 				nodeName(now, i, j),
 				"echo FAKEAPIKEY | dm remote add local admin@127.0.0.1",
@@ -1777,6 +1778,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				break
 			}
 		}
+		fmt.Printf("RETRIES: dotmesh started on cluster %d node %d after %d tries\n", i, j, dotmeshIteration)
 		c.Nodes[j] = NodeFromNodeName(t, now, i, j, clusterName)
 	}
 
@@ -1784,7 +1786,8 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	// around https://github.com/dotmesh-io/dotmesh/issues/62 so
 	// removing this will be a good test of that issue :-)
 	fmt.Printf("Waiting for etcd...\n")
-	for {
+	etcdIteration := 0
+	for ; ; etcdIteration++ {
 		resp := OutputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
 		if err != nil {
 			return err
@@ -1804,6 +1807,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			return err
 		}
 	}
+	fmt.Printf("RETRIES: etcd started after %d tries\n", etcdIteration)
 
 	// For each node, wait until we can talk to dm from that node before
 	// proceeding.
