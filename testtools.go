@@ -1644,25 +1644,6 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		return err
 	}
 
-	st, err = docker(
-		nodeName(now, i, 0),
-		// install etcd operator on the cluster
-		"echo '#### STARTING ETCD OPERATOR' && "+
-			"kubectl apply -f /dotmesh-kube-yaml/etcd-operator-clusterrole.yaml && "+
-			"kubectl apply -f /dotmesh-kube-yaml/etcd-operator-dep.yaml && "+
-			// install dotmesh once on the master (retry because etcd operator
-			// needs to initialize)
-			"sleep 1 && "+
-			"echo '#### STARTING ETCD' && "+
-			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 2; "+KUBE_DEBUG_CMD+"; done && "+
-			"echo '#### STARTING DOTMESH' && "+
-			"kubectl apply -f /dotmesh-kube-yaml/dotmesh.yaml",
-		DEBUG_ENV,
-	)
-	if err != nil {
-		return err
-	}
-
 	if c.DindStorage { // Release the DIND provisioner!!!
 
 		// Install the dind-flexvolume driver on all nodes (test tooling to
@@ -1746,12 +1727,32 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	}
 
 	crashloopMax := 2
+	st, err = docker(
+		nodeName(now, i, 0),
+		// install etcd operator on the cluster
+		"echo '#### STARTING ETCD OPERATOR' && "+
+			"kubectl apply -f /dotmesh-kube-yaml/etcd-operator-clusterrole.yaml && "+
+			"kubectl apply -f /dotmesh-kube-yaml/etcd-operator-dep.yaml && "+
+			// install dotmesh once on the master (retry because etcd operator
+			// needs to initialize)
+			"sleep 1 && "+
+			"echo '#### STARTING ETCD' && "+
+			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 2; "+KUBE_DEBUG_CMD+"; done && "+
+			"echo '#### STARTING DOTMESH' && "+
+			"kubectl apply -f /dotmesh-kube-yaml/dotmesh.yaml",
+		DEBUG_ENV,
+	)
+	if err != nil {
+		return err
+	}
+
 	// Add the nodes at the end, because NodeFromNodeName expects dotmesh
 	// config to be set up.
 	for j := 0; j < c.DesiredNodeCount; j++ {
 		dotmeshIteration := 0
 		crashlooping := 0
 		for ; ; dotmeshIteration++ {
+			log.Printf("Attempting to add dm remote on cluster %d node %d", i, j)
 			st, err = docker(
 				nodeName(now, i, j),
 				"echo FAKEAPIKEY | dm remote add local admin@127.0.0.1",
@@ -1759,6 +1760,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			)
 
 			if err != nil {
+				if dotmeshIteration > 20 {
+					log.Printf("Gave up adding remotes after %d retries, giving up: %v\n", dotmeshIteration, err)
+					return err
+				}
+
 				time.Sleep(time.Second * 2)
 				st, debugErr := docker(
 					nodeName(now, i, 0),
@@ -1797,13 +1803,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 						),
 						nil,
 					)
+
+					if err == nil {
+						log.Printf("DIND status:\n%s\n", st)
+					} else {
+						log.Printf("Error getting DIND status: %#v\n", err)
+					}
 				}
 				log.Printf("Error adding remote:  %v, retrying..", err)
 			} else {
 				break
 			}
 		}
-		fmt.Printf("RETRIES: dotmesh started on cluster %d node %d after %d tries\n", i, j, dotmeshIteration)
+		log.Printf("RETRIES: dotmesh started on cluster %d node %d after %d tries\n", i, j, dotmeshIteration)
 		c.Nodes[j] = NodeFromNodeName(t, now, i, j, clusterName)
 	}
 
@@ -1822,6 +1834,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			fmt.Printf("etcd is up!\n")
 			break
 		}
+		if etcdIteration > 20 {
+			log.Printf("Gave up waiting for etcd after %d retries, giving up.\n", etcdIteration)
+			return fmt.Errorf("Gave up waiting for etcd cluster to be ready after %d retries", etcdIteration)
+		}
+
 		fmt.Printf("etcd is not up... %#v\n", resp)
 		time.Sleep(time.Second * 2)
 		st, err = docker(
