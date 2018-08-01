@@ -58,7 +58,8 @@ for INTERESTING_POD in $(kubectl get pods --all-namespaces --no-headers \
 	fi
 
 	if [ "$PHASE" == "CrashLoopBackOff" ]; then
-		echo "WARNING crashlooping."
+		echo "WARNING crashLoopBackOff, will try again then exit."
+		kubectl describe $INTERESTING_POD -n $NS
 	fi
 
 	if [ "$PHASE" == "CreateContainerConfigError" ]; then
@@ -77,6 +78,15 @@ echo '/_/  |_|\_\\___/|____/|_____| |____/|_____|____/ \___/ \____|'
 echo '                                                             '
 
 exit 0)` // never let the debug command failing cause us to fail the tests!
+
+var checkCrashLoopCmd = `(
+	kubectl get pod --all-namespaces -o json > tmpdir/output.txt
+	result=$(docker run --rm --name jq -v ${PWD}/tmpdir:/tmp --workdir /tmp realguess/jq:1.4 sh -c "cat output.txt | jq '.items[] | if .status.phase == \"CrashLoopBackOff\" then .metadata.name else empty end'")
+	if [ ! -z $result ]; then
+		echo $result
+		exit 1
+	fi
+	exit 0)`
 
 var timings map[string]float64
 var lastTiming int64
@@ -1735,10 +1745,12 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		}
 	}
 
+	crashloopMax := 2
 	// Add the nodes at the end, because NodeFromNodeName expects dotmesh
 	// config to be set up.
 	for j := 0; j < c.DesiredNodeCount; j++ {
 		dotmeshIteration := 0
+		crashlooping := 0
 		for ; ; dotmeshIteration++ {
 			st, err = docker(
 				nodeName(now, i, j),
@@ -1756,6 +1768,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				if debugErr != nil {
 					log.Printf("Error debugging kubctl status:  %v, %s", debugErr, st)
 					return debugErr
+				}
+				st, debugErr = docker(
+					nodeName(now, i, 0),
+					checkCrashLoopCmd,
+					DEBUG_ENV,
+				)
+				if debugErr != nil {
+					if crashlooping < crashloopMax {
+						log.Printf("Some pods - %s - are crashlooping. Will retry %d times then quit.", st, crashloopMax)
+						crashlooping++
+					} else {
+						return debugErr
+					}
 				}
 				if c.DindStorage {
 					// Is the DIND provisioner not working?
@@ -1787,6 +1812,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	// removing this will be a good test of that issue :-)
 	fmt.Printf("Waiting for etcd...\n")
 	etcdIteration := 0
+	crashlooping := 0
 	for ; ; etcdIteration++ {
 		resp := OutputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
 		if err != nil {
@@ -1805,6 +1831,19 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		)
 		if err != nil {
 			return err
+		}
+		st, debugErr := docker(
+			nodeName(now, i, 0),
+			checkCrashLoopCmd,
+			DEBUG_ENV,
+		)
+		if debugErr != nil {
+			if crashlooping < crashloopMax {
+				log.Printf("Some pods - %s - are crashlooping. Will retry %d times then quit.", st, crashloopMax)
+				crashlooping++
+			} else {
+				return debugErr
+			}
 		}
 	}
 	fmt.Printf("RETRIES: etcd started after %d tries\n", etcdIteration)
