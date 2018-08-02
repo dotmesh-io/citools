@@ -81,7 +81,7 @@ exit 0)` // never let the debug command failing cause us to fail the tests!
 
 // return a list of names of pods which are crashing. If there are some, exit 1.
 var checkCrashLoopCmd = `(
-	kubectl get pod --all-namespaces -o json | jq '.items[] | if .status.phase == "CrashLoopBackOff" then .metadata.name else empty end')
+	kubectl get pod --all-namespaces -o json | jq '.items[] | if .status.phase == "CrashLoopBackOff" then .metadata.name else empty end'
 	if [ ! -z $result ]; then
 		echo $result
 		exit 1
@@ -1823,7 +1823,6 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 					return err
 				}
 
-				time.Sleep(time.Second * 2)
 				st, debugErr := docker(
 					nodeName(now, i, 0),
 					KUBE_DEBUG_CMD,
@@ -1868,7 +1867,8 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 						log.Printf("Error getting DIND status: %#v\n", err)
 					}
 				}
-				log.Printf("Error adding remote:  %v, retrying..", err)
+				log.Printf("Error adding remote: %v, sleeping then retrying..", err)
+				time.Sleep(time.Second * 2)
 			} else {
 				break
 			}
@@ -1888,6 +1888,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 				log.Printf("Probed dm list on cluster %d node %d: %s", i, j, st)
 			} else {
 				log.Printf("Failed to probe dm list on cluster %d node %d: %s / %#v", i, j, st, err)
+				time.Sleep(time.Second * 2)
 				return err
 			}
 
@@ -1901,10 +1902,12 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 					log.Printf("Probed docker plugin on cluster %d node %d: %s", i, j, st)
 				} else {
 					log.Printf("Failed to probe docker plugin on cluster %d node %d: %s", i, j, st)
+					time.Sleep(time.Second * 2)
 					return fmt.Errorf("Failed to probe docker plugin on cluster %d node %d: %s", i, j, st)
 				}
 			} else {
 				log.Printf("Failed to probe docker plugin on cluster %d node %d: %s / %#v", i, j, st, err)
+				time.Sleep(time.Second * 2)
 				return err
 			}
 
