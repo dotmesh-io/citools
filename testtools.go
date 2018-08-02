@@ -79,15 +79,13 @@ echo '                                                             '
 
 exit 0)` // never let the debug command failing cause us to fail the tests!
 
+// return a list of names of pods which are crashing. If there are some, exit 1.
 var checkCrashLoopCmd = `(
-	mkdir -p tmpdir
-	kubectl get pod --all-namespaces -o json > tmpdir/output.txt
-	result=$(docker run --rm --name jq -v ${PWD}/tmpdir:/tmp --workdir /tmp realguess/jq:1.4 sh -c "cat output.txt | jq '.items[] | if .status.phase == \"CrashLoopBackOff\" then .metadata.name else empty end'")
+	kubectl get pod --all-namespaces -o json | jq '.items[] | if .status.phase == "CrashLoopBackOff" then .metadata.name else empty end')
 	if [ ! -z $result ]; then
 		echo $result
 		exit 1
 	fi
-	rm -rf tmpdir
 	exit 0)`
 
 var timings map[string]float64
