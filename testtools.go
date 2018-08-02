@@ -1124,7 +1124,7 @@ func poolId(now int64, i, j int) string {
 	return fmt.Sprintf("testpool-%d-%d-node-%d", now, i, j)
 }
 
-func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Node {
+func GetNodeIP(t *testing.T, now int64, i, j int) string {
 	nodeIP := strings.TrimSpace(OutputFromRunOnNode(t,
 		nodeName(now, i, j),
 		`ifconfig eth0 | grep -v "inet6" | grep "inet" | cut -d " " -f 10`,
@@ -1136,6 +1136,12 @@ func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Nod
 			`ifconfig eth0 | grep -v "inet6" | grep "inet" | cut -d " " -f 12 |cut -d ":" -f 2`,
 		))
 	}
+
+	return nodeIP
+}
+
+func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Node {
+	nodeIP := GetNodeIP(t, now, i, j)
 
 	dotmeshConfig, err := docker(
 		nodeName(now, i, j),
@@ -1737,8 +1743,59 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			// needs to initialize)
 			"sleep 1 && "+
 			"echo '#### STARTING ETCD' && "+
-			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 2; "+KUBE_DEBUG_CMD+"; done && "+
-			"echo '#### STARTING DOTMESH' && "+
+			"while ! kubectl apply -f /dotmesh-kube-yaml/dotmesh-etcd-cluster.yaml; do sleep 2; "+KUBE_DEBUG_CMD+"; done",
+		DEBUG_ENV,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Waiting for etcd...\n")
+	etcdIteration := 0
+	crashlooping := 0
+	for ; ; etcdIteration++ {
+		resp := OutputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
+		if err != nil {
+			return err
+		}
+		if strings.Contains(resp, "Available") {
+			fmt.Printf("etcd is up!\n")
+			break
+		}
+		if etcdIteration > 20 {
+			log.Printf("Gave up waiting for etcd after %d retries, giving up.\n", etcdIteration)
+			return fmt.Errorf("Gave up waiting for etcd cluster to be ready after %d retries", etcdIteration)
+		}
+
+		fmt.Printf("etcd is not up... %#v\n", resp)
+		time.Sleep(time.Second * 2)
+		st, err = docker(
+			nodeName(now, i, 0),
+			KUBE_DEBUG_CMD,
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		st, debugErr := docker(
+			nodeName(now, i, 0),
+			checkCrashLoopCmd,
+			DEBUG_ENV,
+		)
+		if debugErr != nil {
+			if crashlooping < crashloopMax {
+				log.Printf("Some pods - %s - are crashlooping. Will retry %d times then quit.", st, crashloopMax)
+				crashlooping++
+			} else {
+				return debugErr
+			}
+		}
+	}
+	fmt.Printf("RETRIES: etcd started after %d tries\n", etcdIteration)
+
+	st, err = docker(
+		nodeName(now, i, 0),
+		"echo '#### STARTING DOTMESH' && "+
 			"kubectl apply -f /dotmesh-kube-yaml/dotmesh.yaml",
 		DEBUG_ENV,
 	)
@@ -1752,10 +1809,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		dotmeshIteration := 0
 		crashlooping := 0
 		for ; ; dotmeshIteration++ {
-			log.Printf("Attempting to add dm remote on cluster %d node %d", i, j)
+			nodeIP := GetNodeIP(t, now, i, j)
+			log.Printf("Attempting to add dm remote on cluster %d node %d (IP %s)", i, j, nodeIP)
 			st, err = docker(
 				nodeName(now, i, j),
-				"echo FAKEAPIKEY | dm remote add local admin@127.0.0.1",
+				"echo FAKEAPIKEY | dm remote add local admin@"+nodeIP,
 				nil,
 			)
 
@@ -1772,7 +1830,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 					DEBUG_ENV,
 				)
 				if debugErr != nil {
-					log.Printf("Error debugging kubctl status:  %v, %s", debugErr, st)
+					log.Printf("Error debugging kubectl status:  %v, %s", debugErr, st)
 					return debugErr
 				}
 				st, debugErr = docker(
@@ -1819,70 +1877,39 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		c.Nodes[j] = NodeFromNodeName(t, now, i, j, clusterName)
 	}
 
-	// Wait for etcd to settle before firing up volumes. This works
-	// around https://github.com/dotmesh-io/dotmesh/issues/62 so
-	// removing this will be a good test of that issue :-)
-	fmt.Printf("Waiting for etcd...\n")
-	etcdIteration := 0
-	crashlooping := 0
-	for ; ; etcdIteration++ {
-		resp := OutputFromRunOnNode(t, c.Nodes[0].Container, "kubectl describe etcd dotmesh-etcd-cluster -n dotmesh | grep Type:")
-		if err != nil {
-			return err
-		}
-		if strings.Contains(resp, "Available") {
-			fmt.Printf("etcd is up!\n")
-			break
-		}
-		if etcdIteration > 20 {
-			log.Printf("Gave up waiting for etcd after %d retries, giving up.\n", etcdIteration)
-			return fmt.Errorf("Gave up waiting for etcd cluster to be ready after %d retries", etcdIteration)
-		}
-
-		fmt.Printf("etcd is not up... %#v\n", resp)
-		time.Sleep(time.Second * 2)
-		st, err = docker(
-			nodeName(now, i, 0),
-			KUBE_DEBUG_CMD,
-			nil,
-		)
-		if err != nil {
-			return err
-		}
-		st, debugErr := docker(
-			nodeName(now, i, 0),
-			checkCrashLoopCmd,
-			DEBUG_ENV,
-		)
-		if debugErr != nil {
-			if crashlooping < crashloopMax {
-				log.Printf("Some pods - %s - are crashlooping. Will retry %d times then quit.", st, crashloopMax)
-				crashlooping++
-			} else {
-				return debugErr
-			}
-		}
-	}
-	fmt.Printf("RETRIES: etcd started after %d tries\n", etcdIteration)
-
 	// For each node, wait until we can talk to dm from that node before
 	// proceeding.
 	for j := 0; j < c.DesiredNodeCount; j++ {
 		nodeName := nodeName(now, i, j)
 		err := TryUntilSucceeds(func() error {
 			// Check that the dm API works
-			_, err := RunOnNodeErr(nodeName, "dm list")
-			if err != nil {
+			st, err := RunOnNodeErr(nodeName, "dm list")
+			if err == nil {
+				log.Printf("Probed dm list on cluster %d node %d: %s", i, j, st)
+			} else {
+				log.Printf("Failed to probe dm list on cluster %d node %d: %s / %#v", i, j, st, err)
 				return err
 			}
 
 			// Check that the docker volume plugin socket works
-			_, err = RunOnNodeErr(
+			st, err = RunOnNodeErr(
 				nodeName,
 				"echo 'GET / HTTP/1.0' | socat /run/docker/plugins/dm.sock -",
 			)
-			return err
-		}, fmt.Sprintf("running dm list on %s", nodeName))
+			if err == nil {
+				if strings.Contains(st, "HTTP/1.1 400 Bad Request") {
+					log.Printf("Probed docker plugin on cluster %d node %d: %s", i, j, st)
+				} else {
+					log.Printf("Failed to probe docker plugin on cluster %d node %d: %s", i, j, st)
+					return fmt.Errorf("Failed to probe docker plugin on cluster %d node %d: %s", i, j, st)
+				}
+			} else {
+				log.Printf("Failed to probe docker plugin on cluster %d node %d: %s / %#v", i, j, st, err)
+				return err
+			}
+
+			return nil
+		}, fmt.Sprintf("checking dotmesh is running on %s", nodeName))
 		if err != nil {
 			return err
 		}
