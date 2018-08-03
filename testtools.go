@@ -1726,8 +1726,8 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	)
 
 	RegisterCleanupAction(50, fmt.Sprintf(
-		"for POOL in `zpool list -H | cut -f 1 | grep %s`; do zpool destroy -f $POOL; done",
-		poolId(now, i, 0),
+		"for POOL in `zpool list -H | cut -f 1 | grep %d`; do zpool destroy -f $POOL; done",
+		stamp,
 	))
 
 	if err != nil {
