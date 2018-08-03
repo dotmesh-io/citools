@@ -255,6 +255,23 @@ func TestMarkForCleanup(f Federation) {
 	}
 }
 
+func getClusterLabel(i int) string {
+	return fmt.Sprintf("cluster-%d-%d", stamp, i)
+}
+
+func getClusterDindNetworkName(i int) string {
+	// work out what the network name that dind::ensure-network
+	// will pass to `docker network create`
+	// and register a cleanup otherwise the IPs will collide
+	// down the road with another network with a different name
+	// but the same subnet
+	clusterLabel := getClusterLabel(i)
+	hasher := sha1.New()
+	hasher.Write([]byte(clusterLabel))
+	clusterLabelHash := hex.EncodeToString(hasher.Sum(nil))
+	return fmt.Sprintf("kubeadm-dind-net-%s", clusterLabelHash)
+}
+
 func testSetup(t *testing.T, f Federation) error {
 	err := System("bash", "-c", fmt.Sprintf(`
 		# Create a home for the test pools to live that can have the same path
@@ -370,23 +387,15 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 
 	for i, c := range f {
 
-		clusterLabel := fmt.Sprintf("cluster-%d-%d", stamp, i)
 		clusterIpPrefix := getUniqueIpPrefix()
 		dindSubnetPrefix := getDindClusterSubnetPrefix()
 		hostIpFromContainer := fmt.Sprintf("%s1", dindSubnetPrefix)
 
-		// work out what the network name that dind::ensure-network
-		// will pass to `docker network create`
-		// and register a cleanup otherwise the IPs will collide
-		// down the road with another network with a different name
-		// but the same subnet
-		hasher := sha1.New()
-		hasher.Write([]byte(clusterLabel))
-		clusterLabelHash := hex.EncodeToString(hasher.Sum(nil))
-		dindNetworkName := fmt.Sprintf("kubeadm-dind-net-%s", clusterLabelHash)
+		clusterLabel := getClusterLabel(i)
+		clusterDindNetworkName := getClusterDindNetworkName(i)
 
-		fmt.Printf("Registering docker network cleanup action for cluster label: %s -> %s\n", clusterLabel, clusterLabelHash)
-		RegisterCleanupAction(11, fmt.Sprintf("docker network rm %s", dindNetworkName))
+		fmt.Printf("Registering docker network cleanup action for cluster label: %s -> %s\n", clusterLabel, clusterDindNetworkName)
+		RegisterCleanupAction(11, fmt.Sprintf("docker network rm %s", clusterDindNetworkName))
 
 		for j := 0; j < c.GetDesiredNodeCount(); j++ {
 			node := nodeName(stamp, i, j)
@@ -533,6 +542,49 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 			fmt.Printf("=== Started up %s\n", node)
 		}
 	}
+
+	// because we have created a different docker network per dind cluster - we need a way
+	// for a node in one cluster to speak to nodes in another cluster
+	// to solve this - we `docker network connect` each node in cluster A to the docker network
+	// created by every other cluster
+
+	// in the following example - we have 2 clusters A and B - each with 2 nodes
+	// the following connects will be made:
+
+	// A-0 connects to B network
+	// A-1 connects to B network
+	// B-0 connects to A network
+	// B-1 connects to A network
+
+	// this is cleaned up because all containers then networks are cleaned up above
+	fmt.Printf("\n\n=== Joining nodes to other clusters docker networks for inter-cluster communication\n\n")
+	for outerClusterIndex, _ := range f {
+		for innerClusterIndex, innerCluster := range f {
+			if outerClusterIndex == innerClusterIndex {
+				continue
+			}
+
+			for nodeIndex := 0; nodeIndex < innerCluster.GetDesiredNodeCount(); nodeIndex++ {
+
+				innerNodeName := nodeName(stamp, innerClusterIndex, nodeIndex)
+				outerNetworkName := getClusterDindNetworkName(outerClusterIndex)
+
+				fmt.Printf("--> joining node: \n        %s from cluster %d to network from cluster %d: %s\n\n",
+					innerNodeName,
+					innerClusterIndex,
+					outerClusterIndex,
+					outerNetworkName,
+				)
+
+				err := System("docker", "network", "connect", outerNetworkName, innerNodeName)
+
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1108,6 +1160,7 @@ type Cluster struct {
 	Env              map[string]string
 	ClusterArgs      string
 	Nodes            []Node
+	DindNetworkName  string
 }
 
 type Kubernetes struct {
@@ -2149,6 +2202,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 
 		dmJoinCommand = dmJoinCommand + c.ClusterArgs
 
+		fmt.Printf("running dm cluster join with following command: %s\n", dmJoinCommand)
 		_, err = docker(nodeName(now, i, j), dmJoinCommand, env)
 		if err != nil {
 			return err
