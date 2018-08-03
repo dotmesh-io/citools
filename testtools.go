@@ -3,6 +3,8 @@ package citools
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -127,8 +129,6 @@ func getCleanupStrategy() cleanupStrategy {
 
 	return defaultCleanupStrategy
 }
-
-const HOST_IP_FROM_CONTAINER = "10.192.0.1"
 
 var getFieldsByNewLine = func(c rune) bool {
 	return c == '\n'
@@ -370,7 +370,23 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 
 	for i, c := range f {
 
+		clusterLabel := fmt.Sprintf("cluster-%d-%d", stamp, i)
 		clusterIpPrefix := getUniqueIpPrefix()
+		dindSubnetPrefix := getDindClusterSubnetPrefix()
+		hostIpFromContainer := fmt.Sprintf("%s1", dindSubnetPrefix)
+
+		// work out what the network name that dind::ensure-network
+		// will pass to `docker network create`
+		// and register a cleanup otherwise the IPs will collide
+		// down the road with another network with a different name
+		// but the same subnet
+		hasher := sha1.New()
+		hasher.Write([]byte(clusterLabel))
+		clusterLabelHash := hex.EncodeToString(hasher.Sum(nil))
+		dindNetworkName := fmt.Sprintf("kubeadm-dind-net-%s", clusterLabelHash)
+
+		fmt.Printf("Registering docker network cleanup action for cluster label: %s -> %s\n", clusterLabel, clusterLabelHash)
+		RegisterCleanupAction(11, fmt.Sprintf("docker network rm %s", dindNetworkName))
 
 		for j := 0; j < c.GetDesiredNodeCount(); j++ {
 			node := nodeName(stamp, i, j)
@@ -408,6 +424,8 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 					(cd %s
 						EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
 						DIND_LABEL="%s" \
+						DIND_SUBNET_SIZE=24 \
+						DIND_SUBNET=%s0 \
 						POD_NETWORK_CIDR="%s0.0/24" \
 						CNI_PLUGIN=bridge %s run $NODE "%s" %d)
 					sleep 1
@@ -418,6 +436,7 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 						mount --make-shared /lib/modules/
 						mount --make-shared /run
 						echo "%s '$(hostname)'.local" >> /etc/hosts
+						echo -n "%s" > /DIND_SUBNET_PREFIX
 						echo -n "%s" > /POD_IP_PREFIX
 						mkdir -p /etc/docker
 						echo "{\"insecure-registries\" : [\"%s.local:80\"]}" > /etc/docker/daemon.json
@@ -433,6 +452,7 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 						docker exec -t $NODE bash -c '
 							set -xe
 							echo "%s '$(hostname)'.local" >> /etc/hosts
+							echo -n "%s" > /DIND_SUBNET_PREFIX
 							echo -n "%s" > /POD_IP_PREFIX
 							mkdir -p /etc/docker
 							echo "{\"insecure-registries\" : [\"%s.local:80\"]}" > /etc/docker/daemon.json
@@ -445,15 +465,23 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 						// name.  This is so that different clusters end up on
 						// different docker networks, and don't end up on
 						// overlapping (identical) service VIP ranges.
-						fmt.Sprintf("cluster-%d-%d", stamp, i),
+						clusterLabel,
+						// Set the DIND_SUBNET to a unique value for this cluster
+						// otherwise multiple networks will try to be created all
+						// with a 10.192.0.0 subnet
+						// DIND_SUBNET is 10.192.X.0
+						// DIND_SUBNET_SIZE is 24
+						// this means each cluster has a docker network created
+						// with a CIDR of 10.192.X.0/24
+						dindSubnetPrefix,
 						clusterIpPrefix,
 						dindClusterScriptName, c.RunArgs(i, j),
 						// See also "k+11" elsewhere - this is the per-node pod
 						// network subnet, passed as the third argument to
 						// dind::run in dind-cluster-patched.sh
 						j+11,
-						HOST_IP_FROM_CONTAINER, clusterIpPrefix, hostname,
-						HOST_IP_FROM_CONTAINER, clusterIpPrefix, hostname),
+						hostIpFromContainer, dindSubnetPrefix, clusterIpPrefix, hostname,
+						hostIpFromContainer, dindSubnetPrefix, clusterIpPrefix, hostname),
 					)
 				},
 				fmt.Sprintf("starting container %s", node),
@@ -981,18 +1009,18 @@ func localEtcdImage() string {
 	return fmt.Sprintf("%s.local:80/dotmesh/etcd:v3.0.15", hostname)
 }
 
-func localImageArgs() string {
+func localImageArgs(hostIpFromContainer string) string {
 	logSuffix := ""
 	if os.Getenv("DISABLE_LOG_AGGREGATION") == "" {
-		logSuffix = fmt.Sprintf(" --log %s", HOST_IP_FROM_CONTAINER)
+		logSuffix = fmt.Sprintf(" --log %s", hostIpFromContainer)
 	}
 	traceSuffix := ""
 	if os.Getenv("DISABLE_TRACING") == "" {
-		traceSuffix = fmt.Sprintf(" --trace %s", HOST_IP_FROM_CONTAINER)
+		traceSuffix = fmt.Sprintf(" --trace %s", hostIpFromContainer)
 	}
 	regSuffix := ""
 	return ("--image " + LocalImage("dotmesh-server") + " --etcd-image " + localEtcdImage() +
-		" --docker-api-version 1.23 --discovery-url http://" + HOST_IP_FROM_CONTAINER + ":8087" +
+		" --docker-api-version 1.23 --discovery-url http://" + hostIpFromContainer + ":8087" +
 		logSuffix + traceSuffix + regSuffix)
 }
 
@@ -1412,20 +1440,20 @@ func RestartOperator(t *testing.T, masterNode string) {
 	}
 }
 
-func getUniqueIpPrefix() string {
-	ipPrefix := -1
+func getUniqueNumberAtomically(min int, max int, group string) int {
+	uniqueNumber := -1
 	iteration := 0
-	prefixFileName := ""
+	fileName := ""
 	for ; iteration < 20; iteration++ {
-		ipPrefix = rand.Intn(60) + 20
+		uniqueNumber = rand.Intn(max-min) + min
 
-		prefixFileName = fmt.Sprintf("/tmp/DOTMESH_KUBE_IP.%d", ipPrefix)
+		fileName = fmt.Sprintf("/tmp/%s.%d", group, uniqueNumber)
 
 		// Attempt atomic creation of the lock file
-		fp, err := os.OpenFile(prefixFileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		fp, err := os.OpenFile(fileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if os.IsExist(err) {
 			// Is it stale?
-			stat, err := os.Stat(prefixFileName)
+			stat, err := os.Stat(fileName)
 			if err != nil {
 				if os.IsNotExist(err) {
 					// Somebody might have deleted it from under us, no problem
@@ -1435,7 +1463,7 @@ func getUniqueIpPrefix() string {
 			} else {
 				age := time.Now().Nanosecond() - stat.ModTime().Nanosecond()
 				if age > 3600000000 { // 1 hour in nanoseconds
-					os.Remove(prefixFileName) // Deliberately ignore errors, as somebody else might be doing the same thing at the same time
+					os.Remove(fileName) // Deliberately ignore errors, as somebody else might be doing the same thing at the same time
 				}
 			}
 			// Sleep a random interval to avoid thundering herds, then try again, picking a new
@@ -1448,18 +1476,30 @@ func getUniqueIpPrefix() string {
 
 		// Success! Write an identifying string (our test dir name) to
 		// the file, just for audit reasons.
-		fp.Write([]byte(testDirName(stamp) + "\n"))
+		fp.Write([]byte(testDirName(stamp)))
 		fp.Close()
 		break
 	}
 
-	if ipPrefix == -1 {
-		panic("Gave up looking for a free IP prefix")
+	if uniqueNumber == -1 {
+		panic("Gave up looking for a free unique number")
 	}
 
 	// Make sure we clear up if the tests finish OK
-	RegisterCleanupAction(30, fmt.Sprintf("rm %s", prefixFileName))
+	RegisterCleanupAction(30, fmt.Sprintf("rm %s", fileName))
+
+	return uniqueNumber
+}
+
+func getUniqueIpPrefix() string {
+	ipPrefix := getUniqueNumberAtomically(20, 80, "DOTMESH_KUBE_IP")
 	return fmt.Sprintf("10.%d.", ipPrefix)
+}
+
+// we use 10.192.X.0/24 so we can have 255 dind containers at the same time
+func getDindClusterSubnetPrefix() string {
+	ipPrefix := getUniqueNumberAtomically(1, 240, "DOTMESH_DIND_SUBNET")
+	return fmt.Sprintf("10.192.%d.", ipPrefix)
 }
 
 func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
@@ -1519,9 +1559,12 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			}
 	*/
 
+	dindSubnetPrefix := OutputFromRunOnNode(t, c.Nodes[0].Container, "cat /DIND_SUBNET_PREFIX")
+	hostIpFromContainer := fmt.Sprintf("%s1", dindSubnetPrefix)
+
 	logAddr := ""
 	if os.Getenv("DISABLE_LOG_AGGREGATION") == "" {
-		logAddr = HOST_IP_FROM_CONTAINER
+		logAddr = hostIpFromContainer
 	}
 
 	// Move k8s root dir into /dotmesh-test-pools/<timestamp>/ on every node.
@@ -1598,6 +1641,7 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 			routes := OutputFromRunOnNode(t, c.Nodes[j].Container, "ip route")
 			fmt.Printf("Routes on %s: %s\n", c.Nodes[j].Container, routes)
 			podIpPrefix := OutputFromRunOnNode(t, c.Nodes[j].Container, "cat /POD_IP_PREFIX")
+			fmt.Printf("DIND_SUBNET on %s: %s\n", c.Nodes[j].Container, dindSubnetPrefix)
 			fmt.Printf("POD_IP_PREFIX on %s: %s\n", c.Nodes[j].Container, podIpPrefix)
 
 			cmd := fmt.Sprintf("ip route add $(cat /POD_IP_PREFIX)%d.0/24 via %s", k+11, gw)
@@ -2031,7 +2075,10 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		panic("no such thing as a zero-node cluster")
 	}
 
-	dmInitCommand := "EXTRA_HOST_COMMANDS='echo Testing EXTRA_HOST_COMMANDS' dm cluster init " + localImageArgs() +
+	dindSubnetPrefix := OutputFromRunOnNode(t, c.Nodes[0].Container, "cat /DIND_SUBNET_PREFIX")
+	hostIpFromContainer := fmt.Sprintf("%s1", dindSubnetPrefix)
+
+	dmInitCommand := "EXTRA_HOST_COMMANDS='echo Testing EXTRA_HOST_COMMANDS' dm cluster init " + localImageArgs(hostIpFromContainer) +
 		" --use-pool-dir " +
 		filepath.Join(testDirName(now), fmt.Sprintf("wd-%d-0", i)) +
 		" --use-pool-name " + poolId(now, i, 0) +
@@ -2086,7 +2133,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 
 		dmJoinCommand := fmt.Sprintf(
 			"dm cluster join %s %s %s",
-			localImageArgs()+" --use-pool-dir "+filepath.Join(testDirName(now), fmt.Sprintf("wd-%d-%d", i, j))+" ",
+			localImageArgs(hostIpFromContainer)+" --use-pool-dir "+filepath.Join(testDirName(now), fmt.Sprintf("wd-%d-%d", i, j))+" ",
 			joinUrl,
 			" --use-pool-name "+poolId(now, i, j),
 		)
