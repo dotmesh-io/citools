@@ -8,12 +8,12 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1403,31 +1403,40 @@ func RestartOperator(t *testing.T, masterNode string) {
 func getUniqueIpPrefix() string {
 	ipPrefix := -1
 	iteration := 0
+	prefixFileName := ""
 	for ; iteration < 20; iteration++ {
 		ipPrefix = rand.Intn(60) + 20
 
-		prefixFileName := fmt.Sprintf("/tmp/DOTMESH_KUBE_IP.%d", ipPrefix)
+		prefixFileName = fmt.Sprintf("/tmp/DOTMESH_KUBE_IP.%d", ipPrefix)
 
 		// Attempt atomic creation of the lock file
 		fp, err := os.OpenFile(prefixFileName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 		if os.IsExist(err) {
 			// Is it stale?
 			stat, err := os.Stat(prefixFileName)
-			age := time.Now().Nanosecond() - fp.ModTime().Nanosecond()
-			if age > 3600000000 { // 1 hour in nanoseconds
-				os.Remove(prefixFileName) // Deliberately ignore errors, as somebody else might be doing the same thing at the same time
+			if err != nil {
+				if os.IsNotExist(err) {
+					// Somebody might have deleted it from under us, no problem
+				} else {
+					panic(err)
+				}
+			} else {
+				age := time.Now().Nanosecond() - stat.ModTime().Nanosecond()
+				if age > 3600000000 { // 1 hour in nanoseconds
+					os.Remove(prefixFileName) // Deliberately ignore errors, as somebody else might be doing the same thing at the same time
+				}
 			}
-
 			// Sleep a random interval to avoid thundering herds, then try again, picking a new
 			// random number
-			time.Sleep((rand.Intn(1000) + 500) * time.Millisecond)
+			time.Sleep(time.Duration(rand.Intn(1000)+500) * time.Millisecond)
 			continue
 		} else if err != nil {
 			panic(err)
 		}
 
-		// Success! Write an identifying string to the file, just for audit reasons.
-		fp.Write([]byte(fmt.Sprintf("%d", stamp)))
+		// Success! Write an identifying string (our test dir name) to
+		// the file, just for audit reasons.
+		fp.Write([]byte(testDirName(stamp)))
 		fp.Close()
 		break
 	}
@@ -1437,7 +1446,7 @@ func getUniqueIpPrefix() string {
 	}
 
 	// Make sure we clear up if the tests finish OK
-	registerCleanupAction(30, fmt.Sprintf("rm %s", prefixFileName))
+	RegisterCleanupAction(30, fmt.Sprintf("rm %s", prefixFileName))
 	return fmt.Sprintf("10.%d.", ipPrefix)
 }
 
