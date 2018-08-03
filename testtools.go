@@ -2033,7 +2033,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 	dmInitCommand = dmInitCommand + c.ClusterArgs
 
 	RegisterCleanupAction(50, fmt.Sprintf(
-		"MNT=%s/%s/mnt; umount -f $MNT; zpool destroy -f %s",
+		"zpool destroy -f %s",
 		testDirName(now),
 		poolId(now, i, 0),
 		poolId(now, i, 0),
