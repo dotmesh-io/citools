@@ -1448,7 +1448,7 @@ func getUniqueIpPrefix() string {
 
 		// Success! Write an identifying string (our test dir name) to
 		// the file, just for audit reasons.
-		fp.Write([]byte(testDirName(stamp)))
+		fp.Write([]byte(testDirName(stamp) + "\n"))
 		fp.Close()
 		break
 	}
