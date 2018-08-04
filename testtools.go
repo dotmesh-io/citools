@@ -407,8 +407,10 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 					fi
 					(cd %s
 						EXTRA_DOCKER_ARGS="-v /dotmesh-test-pools:/dotmesh-test-pools:rshared -v /var/run/docker.sock:/hostdocker.sock %s " \
+						DIND_SUBNET="192.168.%d.0" \
+						DIND_SUBNET_SIZE="24" \
 						DIND_LABEL="%s" \
-						POD_NETWORK_CIDR="%s0.0/24" \
+						POD_NETWORK_CIDR="10.%d.0.0/16" \
 						CNI_PLUGIN=bridge %s run $NODE "%s" %d)
 					sleep 1
 					echo "About to run docker exec on $NODE"
@@ -441,16 +443,24 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 						'
 					fi
 					`, node, runScriptDir, mountDockerAuth,
+						// clusterIpPrefix is used here to generate a
+						// 192.168.x.0/24 DIND_SUBNET
+						clusterIpPrefix,
 						// Set DIND_LABEL to the cluster, but not the node
 						// name.  This is so that different clusters end up on
 						// different docker networks, and don't end up on
 						// overlapping (identical) service VIP ranges.
 						fmt.Sprintf("cluster-%d-%d", stamp, i),
+						// clusterIpPrefix is used here to generate a
+						// 10.x.0.0/16 overall POD_NETWORK_CIDR
 						clusterIpPrefix,
 						dindClusterScriptName, c.RunArgs(i, j),
 						// See also "k+11" elsewhere - this is the per-node pod
 						// network subnet, passed as the third argument to
 						// dind::run in dind-cluster-patched.sh
+						// This transforms the 10.x.0.0/16 POD_NETWORK_CIDR
+						// above into a 10.x.j+11.0/24 pod network sub-range
+						// per node.
 						j+11,
 						HOST_IP_FROM_CONTAINER, clusterIpPrefix, hostname,
 						HOST_IP_FROM_CONTAINER, clusterIpPrefix, hostname),
@@ -1412,7 +1422,7 @@ func RestartOperator(t *testing.T, masterNode string) {
 	}
 }
 
-func getUniqueIpPrefix() string {
+func getUniqueIpPrefix() int {
 	ipPrefix := -1
 	iteration := 0
 	prefixFileName := ""
@@ -1459,7 +1469,7 @@ func getUniqueIpPrefix() string {
 
 	// Make sure we clear up if the tests finish OK
 	RegisterCleanupAction(30, fmt.Sprintf("rm %s", prefixFileName))
-	return fmt.Sprintf("10.%d.", ipPrefix)
+	return ipPrefix
 }
 
 func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
