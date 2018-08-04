@@ -1458,7 +1458,7 @@ func getUniqueIpPrefix() int {
 
 		// Success! Write an identifying string (our test dir name) to
 		// the file, just for audit reasons.
-		fp.Write([]byte(testDirName(stamp)))
+		fp.Write([]byte(testDirName(stamp) + "\n"))
 		fp.Close()
 		break
 	}
@@ -2056,8 +2056,6 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 
 	RegisterCleanupAction(50, fmt.Sprintf(
 		"zpool destroy -f %s",
-		testDirName(now),
-		poolId(now, i, 0),
 		poolId(now, i, 0),
 	))
 
@@ -2102,6 +2100,11 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 			joinUrl,
 			" --use-pool-name "+poolId(now, i, j),
 		)
+
+		RegisterCleanupAction(50, fmt.Sprintf(
+			"zpool destroy -f %s",
+			poolId(now, i, j),
+		))
 
 		if kzv := os.Getenv("KERNEL_ZFS_VERSION"); kzv != "" {
 			dmJoinCommand = dmJoinCommand + " --zfs " + kzv
