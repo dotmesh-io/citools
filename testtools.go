@@ -828,6 +828,7 @@ func dockerContext(ctx context.Context, node string, cmd string, env map[string]
 }
 
 func RunOnNodeErr(node string, cmd string) (string, error) {
+	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
 	return docker(node, cmd, nil)
 }
 
