@@ -432,7 +432,7 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 					"docker exec -i $NODE systemctl stop docker ; "+
 					"docker exec -i $NODE systemctl stop kubelet ; "+
 					"docker exec -i $NODE systemctl stop systemd-journald ; "+
-					"docker rm -f %s", node))
+					"docker rm -f $NODE", node))
 
 			// as soon as this completes, add it to c.Nodes. more detail gets
 			// filled in later (eg dotmesh secrets), but it's important that
