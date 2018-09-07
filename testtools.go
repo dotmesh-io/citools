@@ -1054,6 +1054,12 @@ type Cluster struct {
 	IpPrefix         int
 }
 
+type BlankCluster struct {
+	DesiredNodeCount int
+	Nodes            []Node
+	IpPrefix         int
+}
+
 type Kubernetes struct {
 	DesiredNodeCount int
 	Nodes            []Node
@@ -1066,6 +1072,10 @@ type Pair struct {
 	From       Node
 	To         Node
 	RemoteName string
+}
+
+func NewBlankCluster(desiredNodeCount int) *BlankCluster {
+	return &BlankCluster{DesiredNodeCount: desiredNodeCount}
 }
 
 func NewClusterOnPort(port, desiredNodeCount int) *Cluster {
@@ -2070,6 +2080,51 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		c.Nodes[j] = NodeFromNodeName(t, now, i, j, clusterName)
 	}
 
+	return nil
+}
+
+///////////// Blank Cluster (plain DIND cluster, no dotmesh)
+
+func (c *BlankCluster) RunArgs(i, j int) string {
+	// No special args required for dind with plain Dotmesh.
+	return ""
+}
+
+func (c *BlankCluster) GetNode(i int) Node {
+	return c.Nodes[i]
+}
+
+func (c *BlankCluster) GetNodes() []Node {
+	return c.Nodes
+}
+
+func (c *BlankCluster) AppendNode(n Node) {
+	c.Nodes = append(c.Nodes, n)
+}
+
+func (c *BlankCluster) GetDesiredNodeCount() int {
+	return c.DesiredNodeCount
+}
+
+func (c *BlankCluster) SetIpPrefix(ipPrefix int) {
+	c.IpPrefix = ipPrefix
+}
+
+func (c *BlankCluster) GetIpPrefix() int {
+	return c.IpPrefix
+}
+
+func (c *BlankCluster) Start(t *testing.T, now int64, i int) error {
+	if c.DesiredNodeCount == 0 {
+		panic("no such thing as a zero-node cluster")
+	}
+	clusterName := fmt.Sprintf("cluster_%d", i)
+	LogTiming("init_" + poolId(now, i, 0))
+	for j := 0; j < c.DesiredNodeCount; j++ {
+		c.Nodes[j] = NodeFromNodeName(t, now, i, j, clusterName)
+
+		LogTiming("init_" + poolId(now, i, j))
+	}
 	return nil
 }
 
