@@ -216,7 +216,6 @@ func TestMarkForCleanup(f Federation) {
 	for _, c := range f {
 		for _, n := range c.GetNodes() {
 			node := n.Container
-
 			err := TryUntilSucceeds(func() error {
 				return System("bash", "-c", fmt.Sprintf(
 					`docker exec -t %s bash -c 'touch /CLEAN_ME_UP'`, node,
@@ -232,26 +231,28 @@ func TestMarkForCleanup(f Federation) {
 
 	// Attempt log extraction only after we've safely touched all those CLEAN_ME_UP files, *phew*.
 	for _, c := range f {
-		for _, n := range c.GetNodes() {
-			node := n.Container
-			containers := []string{"dotmesh-server", "dotmesh-server-inner"}
-			for _, container := range containers {
-				logDir := "../extracted_logs"
-				logFile := fmt.Sprintf(
-					"%s/%s-%s.log",
-					logDir, container, node,
-				)
-				err := SilentSystem(
-					"bash", "-c",
-					fmt.Sprintf(
-						"mkdir -p %s && touch %s && chmod -R a+rwX %s && "+
-							"docker exec -i %s "+
-							"docker logs %s > %s",
-						logDir, logFile, logDir, node, container, logFile,
-					),
-				)
-				if err != nil {
-					log.Printf("Unable to stream docker logs to artifacts directory for %s: %s", node, err)
+		if !c.isBlank() {
+			for _, n := range c.GetNodes() {
+				node := n.Container
+				containers := []string{"dotmesh-server", "dotmesh-server-inner"}
+				for _, container := range containers {
+					logDir := "../extracted_logs"
+					logFile := fmt.Sprintf(
+						"%s/%s-%s.log",
+						logDir, container, node,
+					)
+					err := SilentSystem(
+						"bash", "-c",
+						fmt.Sprintf(
+							"mkdir -p %s && touch %s && chmod -R a+rwX %s && "+
+								"docker exec -i %s "+
+								"docker logs %s > %s",
+							logDir, logFile, logDir, node, container, logFile,
+						),
+					)
+					if err != nil {
+						log.Printf("Unable to stream docker logs to artifacts directory for %s: %s", node, err)
+					}
 				}
 			}
 		}
@@ -1261,23 +1262,26 @@ SEARCHABLE HEADER: STARTING CLUSTER
 	// O(n^3)
 	pairs := []Pair{}
 	for _, c := range f {
-		for _, node := range c.GetNodes() {
-			for _, otherCluster := range f {
-				first := otherCluster.GetNode(0)
-				pairs = append(pairs, Pair{
-					From:       node,
-					To:         first,
-					RemoteName: first.ClusterName,
-				})
-				for i, oNode := range otherCluster.GetNodes() {
+		if !c.isBlank() {
+			for _, node := range c.GetNodes() {
+				for _, otherCluster := range f {
+					first := otherCluster.GetNode(0)
 					pairs = append(pairs, Pair{
 						From:       node,
-						To:         oNode,
-						RemoteName: fmt.Sprintf("%s_node_%d", first.ClusterName, i),
+						To:         first,
+						RemoteName: first.ClusterName,
 					})
+					for i, oNode := range otherCluster.GetNodes() {
+						pairs = append(pairs, Pair{
+							From:       node,
+							To:         oNode,
+							RemoteName: fmt.Sprintf("%s_node_%d", first.ClusterName, i),
+						})
+					}
 				}
 			}
 		}
+
 	}
 	for _, pair := range pairs {
 		found := false
@@ -1340,6 +1344,7 @@ type Startable interface {
 	RunArgs(int, int) string
 	GetIpPrefix() int
 	SetIpPrefix(int)
+	isBlank() bool
 }
 
 ///////////// Kubernetes
@@ -1371,6 +1376,10 @@ func (c *Kubernetes) SetIpPrefix(ipPrefix int) {
 
 func (c *Kubernetes) GetIpPrefix() int {
 	return c.IpPrefix
+}
+
+func (c *Kubernetes) isBlank() bool {
+	return false
 }
 
 func ChangeOperatorNodeSelector(masterNode, nodeSelector string) error {
@@ -2114,6 +2123,10 @@ func (c *BlankCluster) GetIpPrefix() int {
 	return c.IpPrefix
 }
 
+func (c *BlankCluster) isBlank() bool {
+	return true
+}
+
 func (c *BlankCluster) Start(t *testing.T, now int64, i int) error {
 	if c.DesiredNodeCount == 0 {
 		panic("no such thing as a zero-node cluster")
@@ -2157,6 +2170,10 @@ func (c *Cluster) SetIpPrefix(ipPrefix int) {
 
 func (c *Cluster) GetIpPrefix() int {
 	return c.IpPrefix
+}
+
+func (c *Cluster) isBlank() bool {
+	return false
 }
 
 func (c *Cluster) Start(t *testing.T, now int64, i int) error {
