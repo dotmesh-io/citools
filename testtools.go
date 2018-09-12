@@ -1492,6 +1492,11 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		panic("no such thing as a zero-node cluster")
 	}
 
+	// TODO: start using injectImage function from github.com/dotmesh-io/e2e
+	// instead of this - it uses the host docker cache, doesn't depend on a
+	// local registry, and we won't get any speedup from doing it the following
+	// way anyway because the dind are always fresh (empty) docker instances
+	// anyway.
 	images, err := ioutil.ReadFile("../kubernetes/images.txt")
 	if err != nil {
 		return err
