@@ -1044,6 +1044,9 @@ type Node struct {
 	ApiKey      string
 	Password    string
 	Port        int
+	// paths & names in /dotmesh-test-pools
+	PoolDir  string
+	PoolName string
 }
 
 type Cluster struct {
@@ -1147,6 +1150,7 @@ func GetNodeIP(t *testing.T, now int64, i, j int) string {
 }
 
 func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Node {
+
 	nodeIP := GetNodeIP(t, now, i, j)
 
 	dotmeshConfig, err := docker(
@@ -1192,6 +1196,8 @@ func NodeFromNodeName(t *testing.T, now int64, i, j int, clusterName string) Nod
 		ApiKey:      apiKey,
 		Password:    password,
 		Port:        port,
+		PoolDir:     filepath.Join(testDirName(now), fmt.Sprintf("wd-%d-%d", i, j)),
+		PoolName:    fmt.Sprintf("testpool-%d-%d-node-%d", now, i, j),
 	}
 }
 
@@ -2136,6 +2142,7 @@ func (c *BlankCluster) Start(t *testing.T, now int64, i int) error {
 	if c.DesiredNodeCount == 0 {
 		panic("no such thing as a zero-node cluster")
 	}
+
 	clusterName := fmt.Sprintf("cluster_%d", i)
 	LogTiming("init_" + poolId(now, i, 0))
 	for j := 0; j < c.DesiredNodeCount; j++ {
