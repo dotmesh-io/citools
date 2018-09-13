@@ -205,6 +205,7 @@ func TryUntilSucceeds(f func() error, desc string) error {
 }
 
 func TryForever(f func() error, desc string) error {
+	attempt := 0
 	for {
 		err := f()
 		if err != nil {
@@ -213,6 +214,7 @@ func TryForever(f func() error, desc string) error {
 		} else {
 			return nil
 		}
+		attempt++
 	}
 }
 
