@@ -204,6 +204,17 @@ func TryUntilSucceeds(f func() error, desc string) error {
 	}
 }
 
+func TryForever(f func() error, desc string) error {
+	for {
+		err := f()
+		if err != nil {
+			fmt.Printf("Error %s: %v, pausing and trying again...\n", desc, err)
+			time.Sleep(time.Duration(attempt) * time.Second)
+		} else {
+			return nil
+		}
+	})
+
 func TestMarkForCleanup(f Federation) {
 	log.Printf(`Entering TestMarkForCleanup:
   ____ _     _____    _    _   _ ___ _   _  ____   _   _ ____  
