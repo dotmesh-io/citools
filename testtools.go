@@ -213,7 +213,8 @@ func TryForever(f func() error, desc string) error {
 		} else {
 			return nil
 		}
-	})
+	}
+}
 
 func TestMarkForCleanup(f Federation) {
 	log.Printf(`Entering TestMarkForCleanup:
