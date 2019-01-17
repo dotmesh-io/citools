@@ -882,6 +882,7 @@ func dockerSystem(node string, cmd string) error {
 }
 
 func RunOnNode(t *testing.T, node string, cmd string) {
+	t.Helper()
 	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
 	debugEnv := map[string]string{}
 	s, err := docker(node, cmd, debugEnv)
@@ -891,6 +892,7 @@ func RunOnNode(t *testing.T, node string, cmd string) {
 }
 
 func RunOnNodeContext(ctx context.Context, t *testing.T, node string, cmd string) {
+	t.Helper()
 	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
 	debugEnv := map[string]string{}
 	s, err := dockerContext(ctx, node, cmd, debugEnv)
