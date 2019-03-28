@@ -686,7 +686,6 @@ function dind::run {
          ${EXTRA_DOCKER_ARGS:-} \
          ${opts[@]+"${opts[@]}"} \
          "${DIND_IMAGE}" \
-         "systemd.setenv=DIND_CRI=" \
          ${args[@]+"${args[@]}"}
 }
 

@@ -386,6 +386,7 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 						DIND_SUBNET_SIZE="16" \
 						SERVICE_CIDR="%s" \
 						POD_NETWORK_CIDR="%s" \
+            DIND_CRI= \
 						CNI_PLUGIN=bridge %s run $NODE "%s" %d)
 					sleep 1
 					echo "About to run docker exec on $NODE"
