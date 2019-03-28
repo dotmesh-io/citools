@@ -315,7 +315,7 @@ func testSetup(t *testing.T, f Federation) error {
 APISERVER_PORT=${APISERVER_PORT:-8080}
 
 # Use prebuilt DIND image
-DIND_IMAGE="${DIND_IMAGE:-mirantis/kubeadm-dind-cluster:v1.10}"
+DIND_IMAGE="${DIND_IMAGE:-quay.io/dotmesh/kubeadm-dind-cluster:v1.10}"
 
 # Define which DNS service to run
 # possible values are kube-dns (default) and coredns
