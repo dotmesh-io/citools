@@ -954,7 +954,12 @@ func LocalImage(service string) string {
 	var registry string
 	// See .gitlab-ci.yml in the dotmesh repo for where these are set up
 	if reg := os.Getenv("CI_REGISTRY"); reg != "" {
-		registry = reg + "/" + os.Getenv("CI_REPOSITORY")
+		repo := os.Getenv("CI_PROJECT_PATH")
+		if repo == "" {
+			repo = os.Getenv("CI_REPOSITORY")
+		}
+		registry = reg + "/" + repo
+
 	} else {
 		hostname, err := os.Hostname()
 		if err != nil {
