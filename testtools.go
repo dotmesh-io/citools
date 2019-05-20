@@ -981,7 +981,7 @@ func LocalImage(service string) string {
 	}
 	img := fmt.Sprintf("%s:%s", service, tag)
 	if registry == "" {
-		return img
+		return img + " --offline"
 	}
 	return fmt.Sprintf("%s/%s", registry, img)
 }
