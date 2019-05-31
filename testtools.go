@@ -950,6 +950,16 @@ func OutputFromRunOnNode(t *testing.T, node string, cmd string) string {
 	return s
 }
 
+func StreamOutputFromRunOnNode(t *testing.T, node string, cmd string) string {
+	env := make(map[string]string)
+	env["DEBUG_MODE"] = "1"
+	s, err := docker(node, cmd, env)
+	if err != nil {
+		t.Error(fmt.Errorf("%s while running %s on %s: %s", err, cmd, node, s))
+	}
+	return s
+}
+
 func LocalImage(service string) string {
 	var registry string
 	// See .gitlab-ci.yml in the dotmesh repo for where these are set up
