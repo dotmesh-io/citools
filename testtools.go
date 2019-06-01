@@ -1293,13 +1293,6 @@ SEARCHABLE HEADER: STARTING CLUSTER
 		return err
 	}
 
-	// Register to eradicate all lingering mounts (the awk/sort/cut
-	// sorts by line lengths, longest first, to ensure we unmount /A/B
-	// before /A)
-	RegisterCleanupAction(90, fmt.Sprintf("for MNT in `grep %s /proc/self/mountinfo | cut -f 5 -d ' ' | awk '{ print length, $0 }' | sort -nr | cut -d ' ' -f2-`; do umount -f $MNT; done",
-		testDirName(stamp),
-	))
-
 	// Register to delete top-level directory, last of all
 	RegisterCleanupAction(99, fmt.Sprintf(`rm -rf %s`, testDirName(stamp)))
 
@@ -1889,7 +1882,13 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 	)
 
 	RegisterCleanupAction(50, fmt.Sprintf(
-		"for POOL in `zpool list -H | cut -f 1 | grep %d`; do zpool destroy -f $POOL; done",
+		`
+		go get -u github.com/dotmesh-io/zumount &&
+		go install github.com/dotmesh-io/zumount &&
+		for POOL in $(zpool list -H | cut -f 1 | grep %d); do
+			/root/go/bin/zumount $POOL
+			zpool destroy -f $POOL
+		done`,
 		stamp,
 	))
 
@@ -2259,7 +2258,11 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 	dmInitCommand = dmInitCommand + c.ClusterArgs
 
 	RegisterCleanupAction(50, fmt.Sprintf(
-		"zpool destroy -f %s",
+		`go get -u github.com/dotmesh-io/zumount &&
+		go install github.com/dotmesh-io/zumount &&
+		/root/go/bin/zumount %s &&
+		zpool destroy -f %s`,
+		poolId(now, i, 0),
 		poolId(now, i, 0),
 	))
 
@@ -2306,7 +2309,11 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		)
 
 		RegisterCleanupAction(50, fmt.Sprintf(
-			"zpool destroy -f %s",
+			`go get -u github.com/dotmesh-io/zumount &&
+		go install github.com/dotmesh-io/zumount &&
+		/root/go/bin/zumount %s &&
+		zpool destroy -f %s`,
+			poolId(now, i, j),
 			poolId(now, i, j),
 		))
 
