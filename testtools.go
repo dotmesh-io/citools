@@ -877,6 +877,12 @@ func RunOnNodeErr(node string, cmd string) (string, error) {
 	return docker(node, cmd, nil)
 }
 
+// the same as RunOnNodeErr but will stream the outout to os.Stdout & os.Stderr
+func RunOnNodeErrDebug(node string, cmd string) (string, error) {
+	fmt.Printf("RUNNING on %s: %s\n", node, cmd)
+	return docker(node, cmd, DEBUG_ENV)
+}
+
 func dockerSystem(node string, cmd string) error {
 	return System("docker", "exec", "-i", node, "sh", "-c", cmd)
 }
