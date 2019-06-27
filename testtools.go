@@ -115,6 +115,7 @@ const (
 	cleanupStrategyAlways
 	cleanupStrategyNever
 	cleanupStrategyOnSuccess
+	cleanupStrategyLater
 )
 
 var defaultCleanupStrategy = cleanupStrategyOnSuccess
@@ -128,6 +129,8 @@ func getCleanupStrategy() cleanupStrategy {
 		return cleanupStrategyNever
 	case "onsuccess":
 		return cleanupStrategyOnSuccess
+	case "later":
+		return cleanupStrategyLater
 	}
 
 	return defaultCleanupStrategy
@@ -523,6 +526,13 @@ func FinalCleanup(retcode int) {
 		} else {
 			fmt.Printf("[Final Cleanup] skipping cleanup as tests didn't pass, return code: %d", retcode)
 		}
+	case cleanupStrategyLater:
+		fd, err := os.OpenFile(testDirName(stamp)+"/finished", os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			fmt.Printf("[Final Cleanup] we failed to write the cleanup later file: %s", err.String())
+			return
+		}
+		fd.Close()
 	case cleanupStrategyNever, cleanupStrategyNone:
 		// nothing to do
 	}
