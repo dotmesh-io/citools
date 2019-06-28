@@ -529,7 +529,7 @@ func FinalCleanup(retcode int) {
 	case cleanupStrategyLater:
 		fd, err := os.OpenFile(testDirName(stamp)+"/finished", os.O_RDWR|os.O_CREATE, 0600)
 		if err != nil {
-			fmt.Printf("[Final Cleanup] we failed to write the cleanup later file: %s", err.String())
+			fmt.Printf("[Final Cleanup] we failed to write the cleanup later file: %s", err.Error())
 			return
 		}
 		fd.Close()
