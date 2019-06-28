@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 function timeout_handler
 {
@@ -16,8 +16,7 @@ function allow_time
 }
 
 # 30 minutes, in seconds
-# ABS TEST: TIMEOUT=1800
-TIMEOUT=1
+TIMEOUT=1800
 
 # Flag all stale old test run resources as finished
 
