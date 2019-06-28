@@ -1,30 +1,58 @@
 #!/bin/sh
 
-(
-    flock -n 9 || exit 1
+function timeout_handler
+{
+   echo "Allowable time for execution exceeded in pid $BASHPID, stopping"
+   exit 1
+}
 
-    # Remove all finished test run resources
+function allow_time
+{
+    (
+        sleep $1
+        echo "Timed out, terminating pid $2"
+        kill $2
+    ) &
+}
 
-    for f in `find /dotmesh-test-pools -maxdepth 2 -name finished `
-    do
-        DIR="`echo $f | sed s_/finished__`"
-        echo "Cleaning up $DIR because it's finished..."
-        for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
-        do
-            $CMD
-        done
-        rm -rf "$DIR" || true
-    done
+# 30 minutes, in seconds
+# ABS TEST: TIMEOUT=1800
+TIMEOUT=1
 
-    # Remove all stale old test run resources
+# Flag all stale old test run resources as finished
 
-    for DIR in `find /dotmesh-test-pools -maxdepth 1 -ctime +1`
-    do
-        echo "Cleaning up $DIR becuase it's stale..."
-        for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
-        do
-            $CMD
-        done
-        rm -rf "$DIR" || true
-    done
-) 9> /dotmesh-test-pools/cleanup-lock
+for DIR in `find /dotmesh-test-pools -maxdepth 1 -ctime +1`
+do
+    echo "Marking $DIR for cleanup because it's stale..."
+    touch $DIR/finished
+done
+
+# Remove all finished test run resources
+
+for f in `find /dotmesh-test-pools -maxdepth 2 -name finished `
+do
+    DIR="`echo $f | sed s_/finished__`"
+
+    # Run all the cleanups in parallel, but with a non-blocking lock
+    # in case we've already started it in a previous run and it's just
+    # still running
+    (
+        flock -n 9 && (
+            echo "Cleaning up $DIR in pid $BASHPID..."
+            allow_time $TIMEOUT $BASHPID
+            trap timeout_handler SIGALRM
+
+            for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
+            do
+                sh -x $CMD || true
+            done
+            rm -rf "$DIR" || true
+
+            # Terminate timeout process
+            kill $!
+            echo "Finished cleaning up $DIR in pid $BASHPID."
+        ) || echo "Skipped $DIR because it's locked"
+    ) 9> $DIR/cleanup-initiated &
+done
+
+wait
