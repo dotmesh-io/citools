@@ -43,9 +43,10 @@ do
 
             for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
             do
-                sh -x $CMD || true
+                # Run scripts and remove them when done, but break the loop if any fail
+                sh -ex $CMD && rm $CMD || break
             done
-            rm -rf "$DIR" || true
+#            rm -rf "$DIR" || true
 
             # Terminate timeout process
             kill $!

@@ -446,11 +446,11 @@ DNS_SERVICE="${DNS_SERVICE:-kube-dns}"
 			}
 
 			RegisterCleanupAction(10, fmt.Sprintf(
-				"NODE=%s ; docker exec -i $NODE systemctl stop docker ; "+
-					"docker exec -i $NODE systemctl stop docker ; "+
-					"docker exec -i $NODE systemctl stop kubelet ; "+
-					"docker exec -i $NODE systemctl stop systemd-journald ; "+
-					"docker rm -f $NODE", node))
+				"NODE=%s ; docker exec -i $NODE systemctl stop docker || true; "+
+					"docker exec -i $NODE systemctl stop docker || true ; "+
+					"docker exec -i $NODE systemctl stop kubelet || true ; "+
+					"docker exec -i $NODE systemctl stop systemd-journald || true ; "+
+					"docker rm -f $NODE || true", node))
 
 			// as soon as this completes, add it to c.Nodes. more detail gets
 			// filled in later (eg dotmesh secrets), but it's important that
@@ -1548,7 +1548,7 @@ func getUniqueIpPrefix() int {
 	}
 
 	// Make sure we clear up if the tests finish OK
-	RegisterCleanupAction(30, fmt.Sprintf("rm %s", prefixFileName))
+	RegisterCleanupAction(30, fmt.Sprintf("rm %s || true", prefixFileName))
 
 	return ipPrefix
 }
