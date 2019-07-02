@@ -20,6 +20,8 @@ TIMEOUT=1800
 
 # Flag all stale old test run resources as finished
 
+echo "Starting cleanup-old-test-resources.sh"
+
 for DIR in `find /dotmesh-test-pools -maxdepth 1 -ctime +1`
 do
     echo "Marking $DIR for cleanup because it's stale..."
@@ -43,8 +45,8 @@ do
 
             for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
             do
-                # Cron doesn't put /sbin in the path, but we need it for zpool commands
-                export PATH=$PATH:/sbin
+                # Cron doesn't put /sbin or /usr/local/bin in the path, but we need it for zpool commands
+                export PATH=$PATH:/sbin:/usr/local/bin
                 # Run scripts and remove them when done, but break the loop if any fail
                 sh -ex $CMD && rm $CMD || break
             done
@@ -58,3 +60,5 @@ do
 done
 
 wait
+
+echo "Finished cleanup-old-test-resources.sh"
