@@ -1,4 +1,10 @@
-for i in gitlab-hopper.dotmesh.io gitlab-jogger.dotmesh.io gitlab-runner.dotmesh.io gitlab-swimmer.dotmesh.io
+for i in gitlab-jogger.dotmesh.io gitlab-runner.dotmesh.io gitlab-swimmer.dotmesh.io
+         gitlab-trundler.dotmesh.io
+         gitlab-pootler.dotmesh.io
+         gitlab-stroller.dotmesh.io
+         gitlab-skipper.dotmesh.io
+         gitlab-bouncer.dotmesh.io
+         gitlab-roller.dotmesh.io
 do
     echo "Deploying cleanup-old-test-resources.go and cronjob to $i..."
     SSH_TARGET=gitlab-runner@$i
