@@ -43,6 +43,8 @@ do
 
             for CMD in `find "$DIR" -name cleanup-actions.\* -print | sort`
             do
+                # Cron doesn't put /sbin in the path, but we need it for zpool commands
+                export PATH=$PATH:/sbin
                 # Run scripts and remove them when done, but break the loop if any fail
                 sh -ex $CMD && rm $CMD || break
             done
