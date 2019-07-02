@@ -1907,9 +1907,12 @@ func (c *Kubernetes) Start(t *testing.T, now int64, i int) error {
 		for POOL in $(zpool list -H | cut -f 1 | grep %d); do
 			zpool destroy -f $POOL || (zumount $POOL && zpool destroy -f $POOL)
 		done &&
-    umount %s`,
+    for DIR in %s/wd-*
+    do
+       umount $DIR || true
+    done`,
 		stamp,
-		workDir,
+		testDirName(now),
 	))
 
 	if err != nil {
