@@ -2297,7 +2297,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		mv /usr/local/bin/zumount.$$ /usr/local/bin/zumount &&
 		chmod +x /usr/local/bin/zumount &&
 		zpool destroy -f %s || (zumount %s && zpool destroy -f %s) &&
-		umount %s
+		(umount %s || true)
 		`,
 		poolId(now, i, 0),
 		poolId(now, i, 0),
@@ -2355,7 +2355,7 @@ func (c *Cluster) Start(t *testing.T, now int64, i int) error {
 		mv /usr/local/bin/zumount.$$ /usr/local/bin/zumount &&
 		chmod +x /usr/local/bin/zumount &&
 		zpool destroy -f %s || (zumount %s && zpool destroy -f %s) &&
-		umount %s`,
+		(umount %s || true)`,
 			poolId(now, i, j),
 			poolId(now, i, j),
 			poolId(now, i, j),
