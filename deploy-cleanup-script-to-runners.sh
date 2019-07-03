@@ -12,6 +12,6 @@ PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/
 @daily rm -f /etc/zfs/zpool.cache ; touch /dotmesh-test-pools/zpool-cache-deleted ; /sbin/reboot -f
 @reboot if [ -f /dotmesh-test-pools/zpool-cache-deleted ]; then rm -rf /dotmesh-test-pools; fi
 * * * * * (go run /home/gitlab-runner/cleanup-old-test-resources.go 2>&1 | ts) >> /home/gitlab-runner/cleanup-old-test-resources.log
-* * * * * mkdir -p /metrics; (echo -n "zpool_total "; zpool list |wc -l) |sponge /metrics/zpool_total.prom
+* * * * * (echo -n "zpool_total "; zpool list |wc -l) |sponge /var/lib/prometheus/node-exporter/zpool_total.prom
 EOF
 done
