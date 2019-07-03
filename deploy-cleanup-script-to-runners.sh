@@ -7,6 +7,8 @@ do
 # Please don't hand-edit this crontab, use citools/deploy-cleanup-script-to-runners.sh to keep
 # all the runners in sync (and if that annoys you, then install chef/puppet/etc to manage them properly)
 
+PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/gitlab-runner/go/bin:/home/gitlab-runner/bin
+
 @daily rm -f /etc/zfs/zpool.cache && /sbin/reboot -f
 @reboot rm -rf /dotmesh-test-pools
 * * * * * (go run /home/gitlab-runner/cleanup-old-test-resources.go 2>&1 | ts) >> /home/gitlab-runner/cleanup-old-test-resources.log
