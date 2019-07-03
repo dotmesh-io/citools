@@ -13,7 +13,7 @@ import (
 )
 
 const dotmeshTestPools = "/dotmesh-test-pools"
-const staleTimeout = time.Hour * 24
+const staleTimeout = time.Hour * 1
 
 func cleanup(runDir string) {
 	log.Printf("Cleaning up %s", runDir)
@@ -119,6 +119,8 @@ func main() {
 		fp, err := os.OpenFile(initiatedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		switch {
 		case err != nil && os.IsExist(err):
+			// FIXME: Check the pid in the file actually exists, so we can
+			// recover cleanly from a reboot
 			log.Printf("Skipping %s as it's already being cleaned up", name)
 			continue
 		case err != nil:
