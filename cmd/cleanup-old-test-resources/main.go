@@ -109,7 +109,19 @@ func main() {
 				log.Printf("Skipping %s as it's unfinished and fresh", name)
 				continue
 			}
-			// Otherwise, fall through...
+			// It's stale! Mark it as finished because if any of the cleanup
+			// steps fail, us having touched the directory will have made it
+			// un-stale again, so a finished flag will ensure that
+			// subsequent retries will pick this directory up.
+
+			fip, err := os.OpenFile(finishedPath, os.O_RDWR|os.O_CREATE, 0600)
+			if err != nil {
+				log.Printf("Seems we can't create %s to mark this stale directory as finished.", finishedPath)
+			} else {
+				fip.Close()
+			}
+
+			// Fall through to do the cleanup...
 		case err == nil:
 			log.Printf("%s is finished", name)
 			// Marked as finished, so fall through...
