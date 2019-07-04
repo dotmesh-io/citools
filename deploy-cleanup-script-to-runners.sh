@@ -9,8 +9,6 @@ do
 
 PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/gitlab-runner/go/bin:/home/gitlab-runner/bin
 
-@daily rm -f /etc/zfs/zpool.cache ; touch /dotmesh-test-pools/zpool-cache-deleted ; /sbin/reboot -f
-@reboot if [ -f /dotmesh-test-pools/zpool-cache-deleted ]; then rm -rf /dotmesh-test-pools; fi
 * * * * * (go run /home/gitlab-runner/cleanup-old-test-resources.go 2>&1 | ts) >> /home/gitlab-runner/cleanup-old-test-resources.log
 * * * * * (echo -n "zpool_total "; echo \$(( \$(zpool list |wc -l) - 1 ))) |sponge /var/lib/prometheus/node-exporter/zpool_total.prom
 EOF
