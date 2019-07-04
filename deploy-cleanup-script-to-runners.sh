@@ -1,7 +1,8 @@
-for i in gitlab-jogger.dotmesh.io gitlab-runner.dotmesh.io gitlab-swimmer.dotmesh.io gitlab-trundler.dotmesh.io gitlab-pootler.dotmesh.io gitlab-stroller.dotmesh.io gitlab-skipper.dotmesh.io gitlab-bouncer.dotmesh.io gitlab-roller.dotmesh.io
+for i in jogger runner swimmer trundler pootler stroller skipper bouncer roller dasher dancer prancer racer pacer hurdler vaulter
 do
-    echo "Deploying cleanup-old-test-resources.go and cronjob to $i..."
-    SSH_TARGET=gitlab-runner@$i
+    HOST=gitlab-$i.dotmesh.io
+    echo "Deploying cleanup-old-test-resources.go and cronjob to $HOST..."
+    SSH_TARGET=gitlab-runner@$HOST
     scp cmd/cleanup-old-test-resources/main.go $SSH_TARGET:cleanup-old-test-resources.go
     ssh $SSH_TARGET 'sudo crontab -' <<EOF
 # Please don't hand-edit this crontab, use citools/deploy-cleanup-script-to-runners.sh to keep
