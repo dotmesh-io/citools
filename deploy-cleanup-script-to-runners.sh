@@ -1,4 +1,4 @@
-for i in jogger runner swimmer trundler pootler stroller skipper bouncer roller dasher dancer prancer racer pacer hurdler vaulter
+for i in jogger runner swimmer trundler pootler stroller skipper bouncer roller dasher dancer prancer racer pacer hurdler vaulter jumper leaper ambler
 do
     HOST=gitlab-$i.dotmesh.io
     echo "Deploying cleanup-old-test-resources.go and cronjob to $HOST..."
