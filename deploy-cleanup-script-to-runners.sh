@@ -13,5 +13,6 @@ PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/
 
 * * * * * (go run /home/gitlab-runner/cleanup-old-test-resources.go 2>&1 | ts) >> /home/gitlab-runner/cleanup-old-test-resources.log
 * * * * * (echo -n "zpool_total "; echo \$(( \$(zpool list |wc -l) - 1 ))) |sponge /var/lib/prometheus/node-exporter/zpool_total.prom
+@nightly docker system prune -f ; rm -rf /home/gitlab-runner/.cache ; journalctl --vacuum-time=10d
 EOF
 done
