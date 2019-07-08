@@ -7,6 +7,8 @@ do
     scp cmd/cleanup-old-test-resources/main.go $SSH_TARGET:cleanup-old-test-resources.go
     ssh $SSH_TARGET sudo mkdir -p /home/gitlab-runner/.cache/go-build
     ssh $SSH_TARGET sudo chown -R gitlab-runner:gitlab-runner /home/gitlab-runner
+    # convention for releasing new versions of zumount is re-running this script
+    ssh $SSH_TARGET 'sudo curl -sSL -o /usr/local/bin/zumount.$$ https://get.dotmesh.io/zumount && sudo mv /usr/local/bin/zumount.$$ /usr/local/bin/zumount && sudo chmod +x /usr/local/bin/zumount'
     ssh $SSH_TARGET 'sudo crontab -' <<EOF
 # Please don't hand-edit this crontab, use citools/deploy-cleanup-script-to-runners.sh to keep
 # all the runners in sync (and if that annoys you, then install chef/puppet/etc to manage them properly)
