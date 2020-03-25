@@ -821,8 +821,6 @@ func FindAHostIP() (string, error) {
 
 	ip := strings.TrimRight(string(out), " \n")
 
-	fmt.Printf("ABS DEBUG: '%s' '%s' %#v\n", string(out), ip, err)
-
 	return ip, err
 }
 
